@@ -2,6 +2,7 @@
 #define PARADIGM4_PICO_PS_TEST_TESTOPSDS_H
 
 #include "pico-ps/common/core.h"
+#include <pico-core/SerializationHelper.h>
 
 namespace paradigm4 {
 namespace pico {

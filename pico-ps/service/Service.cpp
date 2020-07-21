@@ -236,7 +236,7 @@ void Server::restore_storage_from_fs(TableDescriptor& td) {
           static_cast<StorageOperator*>(td.storage_op.get())->restore_op());
     URIConfig uri(td.table_uri);
     std::map<std::string, std::pair<std::string, int>> param_map
-          = {{ds::DS_HADOOP_BIN, {_hadoop_bin, URILVL::EXTCFG}}};
+          = {{core::URI_HADOOP_BIN, {_hadoop_bin, URILVL::EXTCFG}}};
     uri.replace_param(param_map);
     std::vector<std::string> files = FileSystem::get_file_list(uri.name(), _hadoop_bin);
     std::vector<std::vector<std::string>> files_per_worker(_server_load_thread_num);
@@ -260,7 +260,7 @@ void Server::restore_storage_from_fs_worker(const std::vector<std::string>& file
     SLOG(INFO) << "Loading weight files: " << file_name_list;
     URIConfig uri(td->table_uri);
     std::map<std::string, std::pair<std::string, int>> param_map
-          = {{ds::DS_HADOOP_BIN, {_hadoop_bin, URILVL::EXTCFG}}};
+          = {{core::URI_HADOOP_BIN, {_hadoop_bin, URILVL::EXTCFG}}};
     uri.replace_param(param_map);
     for (const std::string& file : files) {
         std::string file_uri = uri.new_uri(file);

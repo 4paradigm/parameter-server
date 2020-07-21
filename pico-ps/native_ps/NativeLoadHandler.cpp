@@ -25,7 +25,7 @@ void NativeLoadHandler::load(const URIConfig& path,
       int) {
     auto uri = path;
     std::map<std::string, std::pair<std::string, int>> param_map
-          = {{ds::DS_HADOOP_BIN, {hadoop_bin, URILVL::EXTCFG}}};
+          = {{core::URI_HADOOP_BIN, {hadoop_bin, URILVL::EXTCFG}}};
     uri.replace_param(param_map);
     std::vector<std::string> files = FileSystem::get_file_list(uri.name(), hadoop_bin);
     size_t file_per_thread = (files.size() + server_concurency) / server_concurency;

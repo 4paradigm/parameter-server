@@ -25,7 +25,7 @@ void LoadHandler::load(const URIConfig& path,
     auto & data = _data;
     data.path = path;
     std::map<std::string, std::pair<std::string, int>> param_map
-          = {{ds::DS_HADOOP_BIN, {hadoop_bin, URILVL::EXTCFG}}};
+          = {{core::URI_HADOOP_BIN, {hadoop_bin, URILVL::EXTCFG}}};
     data.path.replace_param(param_map);
     data.hadoop_bin = hadoop_bin;
     data.server_concurency = server_concurency;
@@ -44,7 +44,7 @@ void LoadHandler::restore(const URIConfig& path, bool drop,
     auto & data = _data;
     data.path = path;
     std::map<std::string, std::pair<std::string, int>> param_map
-        = {{ds::DS_HADOOP_BIN, {hadoop_bin, URILVL::EXTCFG}}};
+        = {{core::URI_HADOOP_BIN, {hadoop_bin, URILVL::EXTCFG}}};
     data.path.replace_param(param_map);
     data.need_rehash = false;
     data.hadoop_bin = hadoop_bin;
