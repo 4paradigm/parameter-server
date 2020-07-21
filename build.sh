@@ -28,7 +28,7 @@ function setup() {
         popd
     fi
     # install tools 
-    prefix=${THIRD_PARTY_PREFIX} ${THIRD_PARTY_SRC}/prepare.sh build cmake glog gflags yaml boost zlib snappy lz4 jemalloc sparsehash googletest pybind11 arrow wheel avro-cpp
+    prefix=${THIRD_PARTY_PREFIX} ${THIRD_PARTY_SRC}/prepare.sh build  cmake glog gflags yaml boost zookeeper zlib snappy lz4 jemalloc sparsehash googletest prometheus-cpp avro-cpp
     if [ "${USE_RDMA}" == "1" ];then
         prefix=${THIRD_PARTY_PREFIX} ${THIRD_PARTY_SRC}/prepare.sh build rdma-core
     fi

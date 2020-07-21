@@ -65,11 +65,11 @@ set(CMAKE_EXE_LINKER_FLAGS "-pthread -Wl,--whole-archive -lrt -Wl,--no-whole-arc
 find_package(Jemalloc REQUIRED)
 find_package(PicoCoreDep REQUIRED)
 
-file(GLOB PS_SRC api/*.cpp common/*.cpp handler/*.cpp model/*.cpp native_ps/*.cpp operator/*.cpp service/*.cpp storage/*.cpp service/coordinated_restore/*.cpp)
+file(GLOB PS_SRC api/*.cpp common/*.cpp handler/*.cpp model/*.cpp native_ps/*.cpp operator/*.cpp service/*.cpp storage/*.cpp service/coordinated_restore/*.cpp controller/*.cpp)
 add_library(pico_ps_obj OBJECT ${PS_SRC})
 
-add_library(pico_ps_static INTERFACE)
-target_link_libraries(pico_ps_static INTERFACE $<TARGET_OBJECTS:pico_ps_obj> pico_ps_obj pico_core_static ${PicoCoreDep_STATIC_LIBRARIES} ${RDMA_LIBRARIES} ${Jemalloc_pic_LIBRARIES} ${LIBPMEMOBJ_LIBRARIES} ${LIBPMEMOBJ++_LIBRARIES} dl)
+add_library(pico_ps_static STATIC $<TARGET_OBJECTS:pico_ps_obj>)
+target_link_libraries(pico_ps_static PUBLIC pico_core_static ${PicoCoreDep_STATIC_LIBRARIES} ${RDMA_LIBRARIES} ${Jemalloc_pic_LIBRARIES} ${LIBPMEMOBJ_LIBRARIES} ${LIBPMEMOBJ++_LIBRARIES} dl)
 
 add_library(pico_ps SHARED $<TARGET_OBJECTS:pico_ps_obj>)
 target_link_libraries(pico_ps PUBLIC pico_core ${PicoCoreDep_LIBRARIES} ${RDMA_LIBRARIES} ${Jemalloc_pic_LIBRARIES} ${LIBPMEMOBJ_LIBRARIES} ${LIBPMEMOBJ++_LIBRARIES} dl)
