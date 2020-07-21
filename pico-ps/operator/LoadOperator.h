@@ -10,7 +10,6 @@
 #include "pico-ps/common/core.h"
 #include "pico-ps/common/core.h"
 
-#include "pico-ds/builder/DsReader.h"
 #include "pico-ps/common/message.h"
 #include "pico-ps/operator/Operator.h"
 #include "pico-ps/operator/SparsePushOperator.h"
