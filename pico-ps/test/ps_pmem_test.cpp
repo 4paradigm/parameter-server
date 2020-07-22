@@ -6,6 +6,7 @@
 #include "pico-ps/common/core.h"
 #include "pico-ps/storage/DCPmemory.h"
 
+
 #include "pico-ps/test/TestUtils.h"
 
 namespace paradigm4 {
@@ -15,7 +16,8 @@ namespace ps {
 typedef PmemHashMapShardStorage<TestKey, 
       TestPredictorValue> TestPmemPredictorStorageType;
 
-typedef BaseKVTextFileRestoreOperator<TestKV, 
+typedef BaseKVTextFileRestoreOperator<TestDsReader<TestKV>,
+        TestKV, 
         TestKey, 
         TestPredictorValue,
         DefaultPartitioner<TestKey>, 
@@ -32,7 +34,8 @@ public:
     }
 };
 
-typedef BaseKVTextFileLoadOperator<TestKV,
+typedef BaseKVTextFileLoadOperator<TestDsReader<TestKV>,
+      TestKV,
       TestKey,
       TestPredictorValue,
       DefaultPartitioner<TestKey>,
@@ -179,7 +182,7 @@ int PmemHashMap_consistency_exec_kill(int ms) {
     } else {
         std::this_thread::sleep_for(std::chrono::milliseconds(ms));
         SLOG(INFO) << "kill " << pid;
-        kill(pid, SIGTERM);
+        kill(pid, SIGKILL);
         int status;
         pid = waitpid(pid, &status, 0);
         return status;
@@ -256,7 +259,7 @@ struct PmemServer {
     ~PmemServer() {
         if (_pid > 0) {
             SLOG(INFO) << "kill " << _pid;
-            kill(_pid, SIGTERM);
+            kill(_pid, SIGKILL);
             int status;
             _pid = waitpid(_pid, &status, 0);
         }
@@ -312,7 +315,7 @@ void PmemHashMap_pservice(std::string master_endpoint) {
         push_handler.wait();
         auto dump_handler = test_make_handler<DumpHandler>(client.get(),
             "TestOps", "TestDumpOperator", op_config, storage_id);
-        DumpArgs dump_args(model_uri, 2);
+        DumpArgs dump_args(model_uri, 2, "");
         dump_handler.dump(dump_args);
         dump_handler.wait();
 
@@ -371,17 +374,18 @@ void PmemHashMap_pservice(std::string master_endpoint) {
                       "TestOps", "TestPmemPredictorUpdateContextOperator", op_config, storage_id);
                 ctx_handler.update_context(test_load_pred_config(nodes, op_config));
             }
+            SLOG(INFO) << "pull test round " << k << " finished";
         }
 
-        // 测试clear storage
-        client->clear_storage(storage_id);
-        for (size_t i = 0; i < NUM_KEYS; ++i) {
-            keys[i] = i;
-            push_args[i] = 0;
-        }
-        pull_handler.pull(keys, pull_args.data(), 100);
-        pull_handler.wait();
-        EXPECT_EQ(pull_args, push_args);
+        // 测试clear storage，因为ps异步启动，有可能只clear一部分ps。
+        // client->clear_storage(storage_id);
+        // for (size_t i = 0; i < NUM_KEYS; ++i) {
+        //     keys[i] = i;
+        //     push_args[i] = 0;
+        // }
+        // pull_handler.pull(keys, pull_args.data(), 100);
+        // pull_handler.wait();
+        // EXPECT_EQ(pull_args, push_args);
     }
     client->finalize();
     rpc_client.reset();

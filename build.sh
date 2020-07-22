@@ -28,7 +28,11 @@ function setup() {
         popd
     fi
     # install tools 
-    prefix=${THIRD_PARTY_PREFIX} ${THIRD_PARTY_SRC}/prepare.sh build  cmake glog gflags yaml boost zookeeper zlib snappy lz4 jemalloc sparsehash googletest prometheus-cpp avro-cpp
+    if [ "${USE_DCPMM}" == "1" ]; then
+        prefix=${THIRD_PARTY_PREFIX} ${THIRD_PARTY_SRC}/prepare.sh build  cmake glog gflags yaml boost zookeeper zlib snappy lz4 jemalloc sparsehash googletest prometheus-cpp avro-cpp pmdk libpmemobj-cpp
+    else
+        prefix=${THIRD_PARTY_PREFIX} ${THIRD_PARTY_SRC}/prepare.sh build  cmake glog gflags yaml boost zookeeper zlib snappy lz4 jemalloc sparsehash googletest prometheus-cpp avro-cpp
+    fi
     if [ "${USE_RDMA}" == "1" ];then
         prefix=${THIRD_PARTY_PREFIX} ${THIRD_PARTY_SRC}/prepare.sh build rdma-core
     fi
