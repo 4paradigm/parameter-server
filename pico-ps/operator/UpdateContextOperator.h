@@ -158,7 +158,9 @@ public:
                 if (_key_partitioner.partition(it->first, new_rt.global_shard_num()) == shard_id) {
                     ++it;
                 } else {
-                    safe_erase(ht, it++);
+                    key_type key(it->first);
+                    ++it;
+                    safe_erase(ht, key);
                 }
             }
 

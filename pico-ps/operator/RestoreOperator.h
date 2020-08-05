@@ -120,7 +120,8 @@ public:
         resp = PSResponse(req);
         resp << storage_id << shard_id << it->finished() << it->id() << it->current_offset() << num;
         ps_serialize(resp.lazy(), _compress_info, std::move(ar));
-        if (it->finished()) {
+        // 由于 dcpmm storage 的 iterator 会给指向的 key-value 加锁，所以 DCPMM storage 的 iterator 不能 cache。 
+        if (it->finished() || st.use_dcpmm()) {
             st.delete_shard_iterator(shard_id, iterator_id);
         }
     }

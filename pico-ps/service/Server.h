@@ -26,6 +26,9 @@ struct ServerConfig {
       size_t server_load_thread_num = 4;
       size_t server_load_block_size = 1000;
       size_t report_interval = -1;
+      // 当 dcpmm 中保存的节点信息不是 dead node，server 将会以传统方式替代一个检测到的 dead_node，并恢复。
+      // 在以传统方式回复之前，会等待一段时间，目的是让其他能够以 dcpmm 恢复的节点尽量以 dcpmm 方式恢复。
+      size_t server_dcpmm_replace_dead_node_wait_time_second = 60;
 };
 
 /*!
@@ -57,11 +60,13 @@ public:
     void exit();
 
 private:
-    void restore_storage(int32_t storage_id, TableDescriptor& td);
+    void restore_storage_by_network(int32_t storage_id, TableDescriptor& td);
 
     bool restore_storage_coordinated(int32_t storage_id, TableDescriptor& td);
 
     void restore_storage_from_fs(TableDescriptor& td);
+
+    void _replace_dead_node(comm_rank_t& dead_rank, std::vector<int32_t>& to_restore_tables);
 
     void restore_storage_from_fs_worker(const std::vector<std::string>& files, TableDescriptor* td, RestoreOperator* op);
 
@@ -184,7 +189,7 @@ private:
 
     void push_sync_tables();
 
-    const size_t _c2s_thread_num, _s2s_thread_num, _server_load_thread_num;
+    const size_t _c2s_thread_num, _s2s_thread_num, _server_load_thread_num, _server_dcpmm_replace_dead_node_wait_time_second;
     size_t _load_block_size;
     std::vector<std::thread> _c2s_thread, _s2s_thread;
     ThreadGroup _io_tg;

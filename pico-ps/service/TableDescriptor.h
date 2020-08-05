@@ -75,7 +75,7 @@ struct TableDescriptor {
     TableDescriptor(TableDescriptor&&) = delete;
     TableDescriptor& operator=(TableDescriptor&&) = delete;
 
-    // 用于快速查找 shard 所在 nsiode, shards 与 node_descs 中信息一致, update_shards 与
+    // 用于快速查找 shard 所在 node, shards 与 node_descs 中信息一致, update_shards 与
     // update_node_descs 中信息一致，其中不会包括状态为 DEAD 的 node 信息。
     std::unordered_map<int32_t, std::vector<int>> shards, update_shards;
     // 用于快速查找 node 中suo, shards 与 node_descs 中信息一致, update_shards 与
@@ -86,6 +86,7 @@ struct TableDescriptor {
     std::string table_uri = ""; // full path
     int version = 0;
     int update_version = 0;
+    std::string version_uuid = "";
     StorageStatus storage_status = StorageStatus::NORMAL;
 
     //todo 每个push_operator对应一个delta_storage
@@ -155,6 +156,8 @@ struct TableDescriptor {
 
     // 根据 config 中包含的 update node 配置信息更新当前的 update node 描述符。
     Status create_update_info(const Configure& config);
+
+    void gen_new_version_uuid();
 
 private:
     void refresh_info(std::vector<NodeDescriptor>& nds,

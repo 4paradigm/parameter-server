@@ -1,5 +1,10 @@
 #include "pico-ps/service/TableDescriptor.h"
 
+#include <boost/uuid/random_generator.hpp>
+#include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_io.hpp>
+#include <random>
+
 namespace paradigm4 {
 namespace pico {
 namespace ps {
@@ -128,6 +133,7 @@ PicoJsonNode TableDescriptor::to_json_node() const {
     PicoJsonNode node;
     node.add("version", version);
     node.add("update_version", update_version);
+    node.add("version_uuid", version_uuid);
     node.add("table_uri", table_uri);
     node.add("storage_op", storage_op_desc.to_json_node());
     PicoJsonNode hdlr_node;
@@ -165,6 +171,10 @@ bool TableDescriptor::from_json_node(const PicoJsonNode& node,
         return false;
     }
     if (node.at("update_version").try_as<int>(u_version) == false) {
+        return false;
+    }
+    std::string p_version_uuid;
+    if (node.at("version_uuid").try_as<std::string>(p_version_uuid) == false) {
         return false;
     }
     if (p_version != version || force_update) {
@@ -207,6 +217,7 @@ bool TableDescriptor::from_json_node(const PicoJsonNode& node,
         if (runtime_info.get())
             runtime_info->update_nodes();
         version = p_version;
+        version_uuid = p_version_uuid;
         updated = true;
     }
     if (u_version != update_version || force_update) {
@@ -228,6 +239,7 @@ bool TableDescriptor::from_json_node(const PicoJsonNode& node,
         if (new_runtime_info.get())
             new_runtime_info->update_nodes();
         update_version = u_version;
+        version_uuid = p_version_uuid;
         updated = true;
     }
     return true;
@@ -305,6 +317,16 @@ Status TableDescriptor::create_update_info(const Configure& config) {
         new_runtime_info->update_nodes();
     update_version += 1;
     return Status();
+}
+
+void TableDescriptor::gen_new_version_uuid() {
+    std::mt19937 ran;
+    ran.seed(time(NULL));
+
+    boost::uuids::basic_random_generator<std::mt19937> gen(&ran);
+    boost::uuids::uuid u = gen();
+
+    version_uuid = to_string(u);
 }
 
 void TableDescriptor::refresh_info(std::vector<NodeDescriptor>& nds,

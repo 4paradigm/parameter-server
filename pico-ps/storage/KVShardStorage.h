@@ -101,6 +101,7 @@ template <typename KEY,
 class UnorderedMapShardStorage : public KVShardStorage<KEY, VALUE> {
 public:
     using KVShardStorage<KEY, VALUE>::_shards;
+    using KVShardStorage<KEY, VALUE>::_shards_meta;
     using KVShardStorage<KEY, VALUE>::_shard_iterators;
     typedef std::unordered_map<KEY, VALUE, HASH, KEYEQUAL, ALLOCATOR> shard_type;
     typedef pico::vector<std::pair<KEY, VALUE>> vector_type;
@@ -153,6 +154,8 @@ public:
         _shards[shard_id]->data_vector = vector_type();
         init_map(boost::any_cast<shard_type&>(_shards[shard_id]->data));
         this->_mem.reshard = false;
+        _shards_meta.emplace(shard_id, std::make_unique<ShardDataMeta>());
+        _shards_meta[shard_id]->on_dcpmm = false;
         return true;
     }
 
@@ -196,6 +199,7 @@ template <typename KEY,
 class HopscotchMapShardStorage : public KVShardStorage<KEY, VALUE> {
 public:
     using KVShardStorage<KEY, VALUE>::_shards;
+    using KVShardStorage<KEY, VALUE>::_shards_meta;
     using KVShardStorage<KEY, VALUE>::_shard_iterators;
     typedef tsl::hopscotch_map<KEY, VALUE, HASH, KEYEQUAL, ALLOCATOR> shard_type;
     typedef pico::vector<std::pair<KEY, VALUE>> vector_type;
@@ -248,6 +252,8 @@ public:
         _shards[shard_id]->data_vector = vector_type();
         init_map(boost::any_cast<shard_type&>(_shards[shard_id]->data));
         this->_mem.reshard = false;
+        _shards_meta.emplace(shard_id, std::make_unique<ShardDataMeta>());
+        _shards_meta[shard_id]->on_dcpmm = false;
         return true;
     }
 
@@ -289,6 +295,7 @@ template <typename KEY,
 class PicoHashTableShardStorage : public KVShardStorage<KEY, VALUE> {
 public:
     using KVShardStorage<KEY, VALUE>::_shards;
+    using KVShardStorage<KEY, VALUE>::_shards_meta;
     using KVShardStorage<KEY, VALUE>::_shard_iterators;
     typedef core::HashTable<KEY, VALUE, HASH, ALLOCATOR> shard_type;
     typedef pico::vector<std::pair<KEY, VALUE>> vector_type;
@@ -341,6 +348,8 @@ public:
         _shards[shard_id]->data_vector = vector_type();
         init_map(boost::any_cast<shard_type&>(_shards[shard_id]->data));
         this->_mem.reshard = false;
+        _shards_meta.emplace(shard_id, std::make_unique<ShardDataMeta>());
+        _shards_meta[shard_id]->on_dcpmm = false;
         return true;
     }
 
@@ -392,6 +401,7 @@ public:
           "to use Google DenseHashMap, key type must has deleted_key() field");
 
     using KVShardStorage<KEY, VALUE>::_shards;
+    using KVShardStorage<KEY, VALUE>::_shards_meta;
     using KVShardStorage<KEY, VALUE>::_shard_iterators;
     typedef google::dense_hash_map<KEY, VALUE, HASH, KEYEQUAL, ALLOCATOR> shard_type;
     typedef pico::vector<std::pair<KEY, VALUE>> vector_type;
@@ -465,6 +475,8 @@ public:
         _shards[shard_id]->data_vector = vector_type();
         init_map(boost::any_cast<shard_type&>(_shards[shard_id]->data), shrink, grow);
         this->_mem.reshard = false;
+        _shards_meta.emplace(shard_id, std::make_unique<ShardDataMeta>());
+        _shards_meta[shard_id]->on_dcpmm = false;
         return true;
     }
 
@@ -517,6 +529,7 @@ public:
           "to use this storage type, KEY type needs to be integral type.");
     using KVShardStorage<KEY, VALUE>::_shards;
     using KVShardStorage<KEY, VALUE>::_shard_iterators;
+    using KVShardStorage<KEY, VALUE>::_shards_meta;
     typedef google::dense_hash_map<KEY, VALUE, HASH, KEYEQUAL, ALLOCATOR> shard_type;
     typedef pico::vector<std::pair<KEY, VALUE>> vector_type;
     typedef typename shard_type::iterator iterator_type;
@@ -591,6 +604,8 @@ public:
         _shards[shard_id]->data_vector = vector_type();
         init_map(boost::any_cast<shard_type&>(_shards[shard_id]->data), shrink, grow);
         this->_mem.reshard = false;
+        _shards_meta.emplace(shard_id, std::make_unique<ShardDataMeta>());
+        _shards_meta[shard_id]->on_dcpmm = false;
         return true;
     }
 
@@ -662,6 +677,7 @@ template <typename KEY, typename VALUE>
 class SizeMpscQueueShardStorage : public KVShardStorage<KEY, VALUE>  {
 public:
     using KVShardStorage<KEY, VALUE>::_shards;
+    using KVShardStorage<KEY, VALUE>::_shards_meta;
     typedef pico::vector<std::pair<KEY, VALUE>> vector_type;
     typedef SizeMpscQueue<vector_type> shard_type;
     SizeMpscQueueShardStorage(const std::unordered_set<int32_t>& shard_id, const Configure&) {
@@ -687,6 +703,8 @@ public:
         _shards.emplace(shard_id, std::make_unique<ShardData>());
         _shards[shard_id]->data = shard_type();
         _shards[shard_id]->data_vector = vector_type();
+        _shards_meta.emplace(shard_id, std::make_unique<ShardDataMeta>());
+        _shards_meta[shard_id]->on_dcpmm = false;
         return true;
     }
 
@@ -805,10 +823,10 @@ bool safe_shrink(HT& ht, typename HT::iterator* = nullptr) {
     }
 }
 
-template<class HT, class IT>
-void safe_erase(HT& ht, IT it, typename HT::iterator* = nullptr) {
+template<class HT, class KeyType>
+void safe_erase(HT& ht, const KeyType& key, typename HT::iterator* = nullptr) {
     try {
-        ht.erase(it++);
+        ht.erase(key);
     } catch(std::bad_alloc&) {
         SLOG(FATAL) << "unexpected std::bad_alloc!";
     }

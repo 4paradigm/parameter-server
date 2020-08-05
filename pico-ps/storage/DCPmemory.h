@@ -1,15 +1,18 @@
 #ifndef DCPMEMORY_H
 #define DCPMEMORY_H
 
+#include <set>
 
 #include <libpmemobj++/pool.hpp>
 #include <libpmemobj++/p.hpp>
 #include <libpmemobj++/make_persistent.hpp>
 #include <libpmemobj++/transaction.hpp>
 #include <libpmemobj++/persistent_ptr.hpp>
-#include <libpmemobj++/container/simplekv.hpp>
+#include <libpmemobj++/container/string.hpp>
+#include <libpmemobj++/container/vector.hpp>
 #include <libpmemobj++/container/concurrent_hash_map.hpp>
 
+#include "pico-ps/service/TableDescriptor.h"
 #include "pico-ps/storage/KVShardStorage.h"
 
 namespace paradigm4 {
@@ -18,38 +21,59 @@ namespace ps {
 
 using pmem::obj::persistent_ptr;
 
-/* simple_kv is used to store the available shard in current node
- * key: storage_id + '_'+ shard_id
- * value: persistent_ptr<concurrent_hash_map>
- * 10000 is the amount of the buckets for simple_kv. currently is a magic number. 
- */
-using kv_type = simple_kv<persistent_ptr<void>, 10000>; 
+using dcpmm_storage_id_set_type = pmem::obj::concurrent_hash_map<int32_t, bool>;
 
-struct dcpmm_root {
-	persistent_ptr<kv_type> kv;
+struct dcpmm_storage_meta {
+    persistent_ptr<dcpmm_storage_id_set_type> storage_set;
     pmem::obj::p<int> node_id;
 };
 
-using pool_t = pmem::obj::pool<dcpmm_root>;
+using meta_pool_t = pmem::obj::pool<dcpmm_storage_meta>;
+
+using dcpmm_storage_shards_t = pmem::obj::concurrent_hash_map<int32_t, persistent_ptr<void>>;
+
+struct dcpmm_storage_type {
+    persistent_ptr<pmem::obj::string> storage_version_uuid;
+    persistent_ptr<dcpmm_storage_shards_t> storage_shards;  // shard_id -> shard_type pptr
+};
+
+using storage_pool_t = pmem::obj::pool<dcpmm_storage_type>;
 
 class DCPmemory {
 public:
     // init
-    bool initialize(std::string path, uint64_t pool_size);
+    bool initialize(std::string path, uint64_t meta_pool_size, uint64_t maximum_storage_pool_size);
     void finalize();
    
-    pool_t& getPool(){
-        return _pmpool;
+    meta_pool_t& get_meta_pool() {
+        return _pm_meta_pool;
     }
+
+    bool get_storage_pool_or_create(int32_t storage_id, storage_pool_t& out);
+
+    // 保留传入的 storage_id，其他 dcpmm 存储内容全部删除。
+    void remove_storage_exclude(const std::unordered_set<int32_t>& excluded_storage);
+
+    // 删除传入的 storage 在 dcpmm 中的存储与 meta。
+    void remove_storage(int32_t storage_id);
 
     static DCPmemory& singleton();
 
 private:
+
+    bool _create_storage_pool(int32_t storage_id, storage_pool_t& out);
+
+    bool _open_storage_pool(int32_t storage_id, storage_pool_t& out);
+
+    void _remove_storage_file(int32_t storage_id);
+
     DCPmemory() {}
-    void recovery_shard_storage();
 
 protected:
-    pool_t _pmpool;
+    std::string _root_path;
+    uint64_t _maximum_storage_pool_size;
+    meta_pool_t _pm_meta_pool;
+    std::unordered_map<int32_t, storage_pool_t> _storage_pool;  // 打开的 storage pool，storage_id -> storage_pool
     bool is_initialized = false;
 };
 
@@ -163,52 +187,66 @@ public:
         std::pair<Key, T>& operator*()const {
             return _cache;
         }
+
+        void release() {
+            _it.release();
+        }
     
-        void flush() {
+        void flush(storage_pool_t& pool) {
+            _pool = pool;
             if (!_it.empty()) {
-                pmem::obj::transaction::run(DCPmemory::singleton().getPool(), [this]{
+                pmem::obj::transaction::run(_pool, [this]{
                     _it->second = _cache.second;
                 });
             }
         }
+
+        void flush() {
+            flush(_pool);
+        }
+
         void cache() {
             _cache.first =_it->first;
             _cache.second = _it->second;
         }
         typename map_type::accessor _it;
         mutable std::pair<Key, T> _cache;
+        storage_pool_t _pool;
     };
 
-    PmemHashMapHandle() {
-        pmem::obj::transaction::run(DCPmemory::singleton().getPool(), [this]{
+    explicit PmemHashMapHandle(storage_pool_t& pool) {
+        pmem::obj::transaction::run(pool, [this] {
             _ptr = pmem::obj::make_persistent<map_type>();
         });
-    }
-    explicit PmemHashMapHandle(persistent_ptr<void> ptr) {
-        _ptr = persistent_ptr<map_type>(ptr);
+        _pool = pool;
     }
 
-    map_type* operator->()const {
+    PmemHashMapHandle(storage_pool_t& pool, persistent_ptr<void> ptr) {
+        _ptr = persistent_ptr<map_type>(ptr);
+        _pool = pool;
+    }
+
+    map_type* operator->() const {
         return this->_ptr.operator->();
     }
     
-    const_iterator begin()const {
+    const_iterator begin() const {
         return {_ptr->begin(), &_ptr};
     }
 
-    const_iterator end()const {
+    const_iterator end() const {
         return {_ptr->end(), &_ptr};
     }
 
-    size_t bucket_count()const {
+    size_t bucket_count() const {
         return _ptr->bucket_count();
     }
 
-    size_t size()const {
+    size_t size() const {
         return _ptr->size();
     }
 
-    bool empty()const {
+    bool empty() const {
         return _ptr->empty();
     }
 
@@ -222,7 +260,7 @@ public:
     }
 
     friend bool lock_find(PmemHashMapHandle& ht, const Key& key, accessor* it) {
-        it->flush();
+        it->flush(ht._pool);
         if (ht._ptr->find(it->_it, key)) {
             it->cache();
             return true;
@@ -248,12 +286,7 @@ public:
     friend bool safe_set(PmemHashMapHandle& ht, const Key& key, const T& val, bool& healthy) {
         if (healthy) {
             try {
-                accessor it;
-                if (lock_find(ht, key, &it)) {
-                    it->second = val;        
-                } else {
-                    ht.insert({key, val});
-                }
+                ht._ptr->insert_or_assign(key, val);
             } catch (pmem::pool_error &e) {
                 SLOG(FATAL) << "To create pool error in safe_set() " << e.what();
                 healthy = false;
@@ -268,11 +301,18 @@ public:
         return true;
     }
 
-    friend void safe_erase(PmemHashMapHandle&, const const_iterator&) {
-        // TODO erase;
-        return;
+    // pmem::obj::concurrent_hash_map 的 iterator 指向某个 key 时会对该 key 加互斥锁。
+    // 所以无法通过传入 iterator 再调用 erase(it->first) 删除，不然会导致死锁。
+    friend void safe_erase(PmemHashMapHandle& ht, const Key& key) {
+        try {
+            ht._ptr->erase(key);
+        } catch (std::exception& e) {
+            SLOG(FATAL) << e.what()
+                        << " To DCPMM error in class PmemHashMapShardStorage safe_erase() ";
+        }
     }
 
+    storage_pool_t _pool;
     persistent_ptr<map_type> _ptr = nullptr;
 };
 
@@ -288,6 +328,8 @@ template <typename KEY,
 class PmemHashMapShardStorage : public KVShardStorage<KEY, VALUE> {
 public:
     using KVShardStorage<KEY, VALUE>::_shards;
+    using KVShardStorage<KEY, VALUE>::_shards_meta;
+    using Storage::_use_dcpmm;
     typedef PmemHashMapHandle<KEY, VALUE, HASH, KEYEQUAL> shard_type;
 
 
@@ -296,6 +338,8 @@ public:
     typedef std::equal_to<KEY> key_equal_type;
     typedef typename shard_type::const_iterator iterator_type;
     typedef typename shard_type::accessor accessor_type;
+    typedef typename shard_type::map_type map_type;
+    typedef KVShardIterator<shard_type> shard_iterator_type;
 
     static void clear_map(shard_type& map) {
         map.clear();
@@ -313,13 +357,30 @@ public:
             if (param.has("storage_id")) {
                 _storage_id = param.node()["storage_id"].as<int32_t>();
             }
+            // 析构时是否保留 dcpmm 上的数据。非 0 值清除，0 值保留。
+            // 目前测试case中使用。对于正常部署情况来说，如果pserver正常退出，应该清空数据。
+            if (param.has("retain_dcpmm_data_after_deconstruction")) {
+                _retain_dcpmm_data_after_deconstruction = param.node()["retain_dcpmm_data_after_deconstruction"].as<int32_t>();
+            }
         }
         if (_storage_id != -1) {
             SLOG(INFO) << "in PmemHashMapShardStorage storage_id is : " << _storage_id;
         }
+
+        SCHECK(DCPmemory::singleton().get_storage_pool_or_create(_storage_id, _storage_pool));
         
         for (const auto& id : shard_id) {
             create_shard(id);
+        }
+        _use_dcpmm = true;
+    }
+
+    virtual ~PmemHashMapShardStorage() {
+        if (_retain_dcpmm_data_after_deconstruction) {
+            SLOG(INFO) << "DCPMM storage " << _storage_id << " retain_dcpmm_data_after_deconsturction was set. Retain the data on dcpmm";
+        } else {
+            _shards.clear();
+            DCPmemory::singleton().remove_storage(_storage_id);
         }
     }
 
@@ -330,28 +391,6 @@ public:
             // add by cc pmem remove
             shard_ptr->_ptr->defragment();
             clear_map(*shard_ptr);
-            // set simple_kv ptr=nullptr
-            int32_t shard_id = shard.first;
-            try{
-                pool_t root_pool = DCPmemory::singleton().getPool();
-                std::string storage_shard_id = std::to_string(_storage_id)+"_"+std::to_string(shard_id);
-                auto &pptr = root_pool.root()->kv->get(storage_shard_id); 
-                if(pptr == nullptr){
-                    throw std::out_of_range("root kv already deleted");
-                }
-                root_pool.root()->kv->put(storage_shard_id, nullptr);
-            }catch(std::out_of_range &e){
-                SLOG(FATAL) << e.what() 
-                      << "clear pmem root kv err, storage id: " << _storage_id 
-                      << " and shard id: " << shard_id 
-                      << " does not exist, at class PmemHashMapShardStorage create_shard_pmem()";
-            } catch (pmem::pool_error &e) {
-                SLOG(FATAL) << e.what() << " clear pmem root kv err "
-                      << " To DCPMM pool error at class PmemHashMapShardStorage clear()";
-            } catch (std::exception &e) {
-                SLOG(FATAL) << e.what()
-                      << " To DCPMM error at class PmemHashMapShardStorage create_shard_pmem()";
-            }
         }
     }
 
@@ -365,55 +404,38 @@ public:
         }
         this->_mem.reshard = true;
         _shards.emplace(shard_id, std::make_unique<ShardData>());
-        
-        // add by cc
-        // boost::any data stores the pointer of the concurrent_hash_map
-        // To gurantee data consistency if the failure happens during the allocation process, 
-        // the allocation process on DCPMM has to be contained in a transaction.
-        pool_t root_pool;
-        std::string storage_shard_id = std::to_string(_storage_id)+"_"+std::to_string(shard_id);
+        _shards_meta.emplace(shard_id, std::make_unique<ShardDataMeta>());
+
+        auto& storage_shards = _storage_pool.root()->storage_shards;
+
         try {
-            
-            root_pool = DCPmemory::singleton().getPool();
-            // recovery
-            shard_type pptr(root_pool.root()->kv->get(storage_shard_id)); 
-            if (pptr._ptr == nullptr){
-                throw std::out_of_range("the old hash map has already been deleted");
+            dcpmm_storage_shards_t::accessor storage_shard_acc;
+            bool found = storage_shards->find(storage_shard_acc, shard_id);
+            if (!found) {
+                SLOG(INFO) << "storage: " << _storage_id << " not found shard " << shard_id << " on dcpmm, create new one.";
+                // 新建 shard
+                shard_type pptr(_storage_pool);
+                storage_shards->insert({shard_id, pptr._ptr});
+                _shards[shard_id]->data = pptr;
+                _shards_meta[shard_id]->on_dcpmm = false;
+            } else {
+                SLOG(INFO) << "storage: " << _storage_id << " found shard " << shard_id << " on dcpmm.";
+                // shard 从 dcpmm 中读取
+                shard_type pptr(_storage_pool, storage_shard_acc->second);
+                pptr._ptr->runtime_initialize();
+                _shards[shard_id]->data = pptr;
+                _shards_meta[shard_id]->on_dcpmm = true;
             }
-            // Logic when file already exists. After opening of the pool we
-            // have to call runtime_initialize() function in order to
-            // recalculate mask and check for consistentcy.
-            pptr->runtime_initialize();
-            // defragment the whole pool at the beginning
-            // pptr->defragment();
-            _shards[shard_id]->data = pptr;
             _shards[shard_id]->data_vector = vector_type();
             this->_mem.reshard = false;
 
-        } catch (std::out_of_range &e) {
-            try{
-                // create new storage
-                shard_type pptr;
-                // 目前_storage_id < 0表示是临时storage，不持久化，update context中会用到。
-                // TODO: 重构pmem storage id
-                if (_storage_id >= 0) {
-                    root_pool.root()->kv->put(storage_shard_id, pptr._ptr);
-                }
-                _shards[shard_id]->data = pptr;
-                _shards[shard_id]->data_vector = vector_type();
-                this->_mem.reshard = false;    
-            } catch (std::exception &e) {
-                SLOG(FATAL) << e.what()
-                      << " To DCPMM error in class PmemHashMapShardStorage create_shard_pmem() ";
-                return false;
-            }
-        } catch (pmem::pool_error &e) {
-		    SLOG(FATAL) << e.what()
-                  << " To DCPMM pool error in class PmemHashMapShardStorage create_shard_pmem() ";
+        } catch (std::exception& e) {
+            SLOG(FATAL) << e.what()
+                        << " To DCPMM error in class PmemHashMapShardStorage create_shard_pmem() ";
             return false;
-        } catch (std::exception &e) {
-		    SLOG(FATAL) << e.what()
-                  << " To DCPMM error in class PmemHashMapShardStorage create_shard_pmem() ";
+        } catch (pmem::pool_error& e) {
+            SLOG(FATAL) << e.what()
+                        << " To DCPMM pool error in class PmemHashMapShardStorage create_shard_pmem() ";
             return false;
         }
         return true;
@@ -429,6 +451,30 @@ public:
         return 0;
     }
 
+    virtual bool erase_shard(int32_t shard_id) override {
+        core::lock_guard<RWSpinLock> lk(this->_mtx);
+        auto it = _shards.find(shard_id);
+        if (_shards.end() == it) {
+            return false;
+        }
+        this->_shard_iterators.clear();
+        this->_mem.reshard = true;
+        _shards.erase(it);
+        dcpmm_storage_shards_t::accessor acc;
+        bool found = _storage_pool.root()->storage_shards->find(acc, shard_id);
+        if (found) {
+            auto pptr = persistent_ptr<map_type>(acc->second);
+            pptr->free_data();
+            pmem::obj::transaction::run(_storage_pool, [&] {
+                pmem::obj::delete_persistent<map_type>(pptr);
+            });
+            acc.release();
+            _storage_pool.root()->storage_shards->erase(shard_id);
+        }
+        this->_mem.reshard = false;
+        return true;
+    }
+
     // TODO: calculate memory usage for nontivial value type
     virtual size_t shard_memory_usage(int32_t shard_id) override {
         boost::shared_lock<RWSpinLock> lk(this->_mtx);
@@ -439,8 +485,31 @@ public:
         }
         return 0;
     }
+
+    virtual ShardIterator* get_shard_iterator(int32_t shard_id, int32_t iterator_id) override {
+        return this->template _get_shard_iterator_impl<shard_type, shard_iterator_type>(shard_id, iterator_id);
+    }
+
+    virtual bool sanity_check(int32_t storage_id, TableDescriptor& td) override {
+        return this->load_version_uuid() == td.version_uuid;
+    }
+
+    virtual void store_version_uuid(const std::string& uuid_str) {
+        _storage_pool.root()->storage_version_uuid->assign(uuid_str);
+    } 
+
+    virtual std::string load_version_uuid() override {
+        if (_storage_pool.root()->storage_version_uuid == nullptr) {
+            return "-";
+        } else {
+            return std::string(_storage_pool.root()->storage_version_uuid->cdata());
+        }
+    }
+
 private:
     int32_t _storage_id;
+    storage_pool_t _storage_pool;
+    bool _retain_dcpmm_data_after_deconstruction = false;
 };
 
 
@@ -448,4 +517,5 @@ private:
 } // namespace pico
 } // namespace paradigm4
 
-#endif
+#endif  // DCPMEMORY_H
+ 
