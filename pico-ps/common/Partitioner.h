@@ -73,11 +73,7 @@ class DefaultPartitioner<std::string> : public Partitioner<std::string> {
 public:
     size_t hash(const std::string& key) const {
         std::pair<uint64_t, uint64_t> hash_code;
-#if __x86_64__
         murmur_hash3_x64_128(key.c_str(), key.size(), MURMURHASH_SEED, &hash_code);
-#else
-        murmur_hash3_x86_128(key.c_str(), key.size(), MURMURHASH_SEED, &hash_code);
-#endif
         return static_cast<size_t>(hash_code.first);
     }
 };

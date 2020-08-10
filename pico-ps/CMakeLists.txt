@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
 option(SKIP_BUILD_TEST "whether skip build testcase" OFF)
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake ${PICO_CORE_SRC}/cmake)
+set(CMAKE_PREFIX_PATH "${THIRD_PARTY}")
 
 message(STATUS "SKIP_BUILD_TEST: ${SKIP_BUILD_TEST}")
 
