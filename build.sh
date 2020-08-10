@@ -2,13 +2,15 @@
 set -e
 PROJECT_ROOT=`pwd`
 echo ${PROJECT_ROOT}
+PICO_PS_ARCH=$(uname -m)
+
 #THIRD_PARTY_PREFIX=
 #THIRD_PARTY_SRC=
 #PREFIX=?
 #USE_RDMA=?
 #J=?
 #PATH=?
-#USE_UCPMM=?
+#USE_DCPMM=?
 #SKIP_BUILD_TEST=?
 export PICO_PS_VERSION=0.0.0.0
 export PICO_PS_VERSION_CODE=$PICO_PS_VERSION-unknown
@@ -21,6 +23,13 @@ function setup() {
     if [ 0"${THIRD_PARTY_PREFIX}" == "0" ]; then
         THIRD_PARTY_PREFIX=${PROJECT_ROOT}/third-party
     fi
+    if [ "${PICO_PS_ARCH}" != "x86_64" -a "${USE_RDMA}" = 1 ]; then
+        echo "RDMA only support on x86_64" >&2
+        exit 1
+    elif [ "${PICO_PS_ARCH}" != "x86_64" -a "${USE_DCPMM}" = 1 ]; then
+        echo "DCPMM only support on x86_64" >&2
+        exit 1
+    fi
     if [ 0"${PICO_CORE_SRC}" == "0" ]; then
         PICO_CORE_SRC=${PROJECT_ROOT}/pico-core
         pushd $PICO_CORE_SRC
@@ -28,14 +37,16 @@ function setup() {
         popd
     fi
     # install tools 
+    extra_pkg=""
     if [ "${USE_DCPMM}" == "1" ]; then
-        prefix=${THIRD_PARTY_PREFIX} ${THIRD_PARTY_SRC}/prepare.sh build  cmake glog gflags yaml boost zookeeper zlib snappy lz4 jemalloc sparsehash googletest prometheus-cpp avro-cpp pmdk libpmemobj-cpp
-    else
-        prefix=${THIRD_PARTY_PREFIX} ${THIRD_PARTY_SRC}/prepare.sh build  cmake glog gflags yaml boost zookeeper zlib snappy lz4 jemalloc sparsehash googletest prometheus-cpp avro-cpp
+        extra_pkg="${extra_pkg} pmdk libpmemobj-cpp"
     fi
-    if [ "${USE_RDMA}" == "1" ];then
-        prefix=${THIRD_PARTY_PREFIX} ${THIRD_PARTY_SRC}/prepare.sh build rdma-core
+    if [ "${USE_RDMA}" == "1" ]; then
+        extra_pkg="${extra_pkg} rdma-core"
     fi
+    prefix=${THIRD_PARTY_PREFIX} ${THIRD_PARTY_SRC}/prepare.sh build \
+            cmake glog gflags yaml boost zookeeper zlib snappy lz4 \
+            jemalloc sparsehash googletest prometheus-cpp avro-cpp ${extra_pkg}
 }
 
 function build() {
