@@ -1,12 +1,12 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+
 #include <fstream>
 #include <gtest/gtest.h>
 
 #include "pico-ps/common/core.h"
 #include "pico-ps/storage/DCPmemory.h"
-
 
 #include "pico-ps/test/TestUtils.h"
 
@@ -85,6 +85,7 @@ REGISTER_OPERATOR(TestOps, TestPmemPredictorPullOperator);
 REGISTER_OPERATOR(TestOps, TestPmemPredictorUpdateContextOperator);
 
 std::string pmem_pool_path = "/mnt/pmem0/ps_pmem_test";
+std::string pmem_pool_storage_1_path = "/mnt/pmem0/ps_pmem_test/storage_pool_set.1";
 std::string model_uri = "./.unittest_tmp/ServiceTest.0.1?format=archiveline";
 std::string server_node_id_path = "./.unittest_tmp/pserver";
 
@@ -138,6 +139,42 @@ void PmemHashMap_test() {
     std::sort(A.begin(), A.end());
     B = {3, 4, 5, 7};
     EXPECT_EQ(A, B);
+}
+
+void PmemhashMap_councrrent_erase(PmemHashMapHandle<int, int>* mp, int key_start, int key_end) {
+    for (int key = key_start; key < key_end; ++key) {
+        safe_erase(*mp, key);
+    }
+}
+
+void PmemHashMap_concurrent_erase_test() {
+    DCPmemory::singleton().remove_storage(1);
+    storage_pool_t storage_pool;
+    EXPECT_TRUE(DCPmemory::singleton().get_storage_pool_or_create(1, storage_pool));
+    bool healthy = true;
+    PmemHashMapHandle<int, int> mp(storage_pool);
+
+    for (int round = 0; round < 10; ++round) {
+        for (int i = 0; i < 100; ++i) {
+            EXPECT_TRUE(safe_insert(mp, i, i, healthy));
+        }
+        EXPECT_EQ(mp.size(), 100);
+
+        std::vector<std::thread> ths;
+        for (int i = 0; i < 10; ++i) {
+            ths.emplace_back(PmemhashMap_councrrent_erase, &mp, i * 10, 20 + i * 10);
+        }
+
+        for (auto& th : ths) {
+            th.join();
+        }
+
+        PmemHashMapHandle<int, int>::accessor it;
+        for (int i = 0; i < 100; ++i) {
+            EXPECT_FALSE(lock_find(mp, i, &it));
+        }
+        EXPECT_EQ(mp.size(), 0);
+    }
 }
 
 struct TestMultiValue {
@@ -498,6 +535,13 @@ void PmemHashMap_pservice(std::string master_endpoint) {
 TEST(PmemHashMapHandle, test) {
     DCPmemory::singleton().initialize(pmem_pool_path, META_POOL_SIZE, MAXIMUM_STORAGE_POOL_SIZE);
     PmemHashMap_test();
+    DCPmemory::singleton().finalize();
+    core::FileSystem::rmrf(pmem_pool_path);
+}
+
+TEST(PmemHashMapHandle, concurrent_erase_test) {
+    DCPmemory::singleton().initialize(pmem_pool_path, META_POOL_SIZE, MAXIMUM_STORAGE_POOL_SIZE);
+    PmemHashMap_concurrent_erase_test();
     DCPmemory::singleton().finalize();
     core::FileSystem::rmrf(pmem_pool_path);
 }
