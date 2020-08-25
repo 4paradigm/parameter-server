@@ -14,6 +14,8 @@ namespace pico {
 /*! \brief namespace of parameter server */
 namespace ps {
 
+struct TableDescriptor;
+
 /*!
  * \brief  最基础 Storage 类型，其他类型的 Storage 均继承于此类型。
  *         定义 Storage 需要实现的接口。
@@ -24,6 +26,24 @@ public:
     /*! \brief  清除当前 Storage 的内容 */
     virtual void clear() = 0;
     virtual ~Storage();
+    virtual bool sanity_check(int32_t storage_id, TableDescriptor& td) {
+        return true;
+    }
+    virtual bool need_remote_restore() {
+        return true;
+    }
+
+    virtual void store_version_uuid(const std::string&) {}
+
+    virtual std::string load_version_uuid() {
+        return "-";
+    }
+
+    bool use_dcpmm() const {
+        return _use_dcpmm;
+    }
+protected:
+    bool _use_dcpmm = false;
 };
 
 class ShardIterator {
@@ -113,10 +133,15 @@ struct ShardMemoryState {
     std::unordered_map<void*, size_t> rehashing;
 };
 
+struct ShardDataMeta {
+    bool on_dcpmm;  // 此 shard 是从 dcpmm 中恢复的
+};
+
 /*! \brief ShardStorage 类型 */
 class ShardStorage : public Storage {
 public:
     typedef std::unordered_map<int32_t, std::unique_ptr<ShardData>> shard_table_t;
+    typedef std::unordered_map<int32_t, std::unique_ptr<ShardDataMeta>> shard_table_meta_t;
 
     virtual ~ShardStorage();
 
@@ -155,7 +180,7 @@ public:
 
     virtual bool create_shard(int32_t shard_id) = 0;
 
-    bool erase_shard(int32_t shard_id);
+    virtual bool erase_shard(int32_t shard_id);
 
     bool exist_shard(int32_t shard_id);
 
@@ -200,6 +225,10 @@ public:
         _mtx.unlock_shared();
     }
 
+   shard_table_meta_t* shards_meta() {
+       return &_shards_meta;
+   }
+
     virtual ShardIterator* get_shard_iterator(int32_t, int32_t) {
         LOG(FATAL) << "No implement";
         return nullptr;
@@ -207,8 +236,20 @@ public:
 
     void delete_shard_iterator(int32_t shard_id, int32_t iterator_id);
 
+    virtual bool need_remote_restore() override {
+        bool ret = false;
+        for (auto &shard_meta : _shards_meta) {
+            if (!shard_meta.second->on_dcpmm) {
+                SLOG(INFO) << "Shard " << shard_meta.first << " cannot restored locally";
+                ret = true;
+            }
+        }
+        return ret;
+    }
+
 protected:
     shard_table_t _shards;
+    shard_table_meta_t _shards_meta;
     RWSpinLock _mtx;
     ShardMemoryState _mem;
     std::unordered_map<int32_t, std::unique_ptr<ShardIterator>> _shard_iterators;

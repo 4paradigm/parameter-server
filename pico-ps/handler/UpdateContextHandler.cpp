@@ -229,6 +229,7 @@ Status UpdateContextHandler::commit_new_ctx_to_master(TableDescriptorWriter& td)
     td.table().apply_update();
     td.table().version += 1;
     td.table().update_version += 1;
+    td.table().gen_new_version_uuid();
     //in PSERVER_LOCK, it should be success
     SCHECK(_client->push_context_to_master_nolock(_storage_id, td.table()).ok());
     _client->master_client()->release_lock(PSERVER_LOCK_NAME);

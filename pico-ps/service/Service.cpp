@@ -11,6 +11,10 @@
 #include <pico-core/observability/metrics/DurationObserver.h>
 #include <pico-core/observability/metrics/Metrics.h>
 
+#ifdef USE_DCPMM
+#include "pico-ps/storage/DCPmemory.h"
+#endif // USE_DCPMM
+
 namespace paradigm4 {
 namespace pico {
 namespace ps {
@@ -34,6 +38,7 @@ Server::Server(const ServerConfig& lemon,
     : _c2s_thread_num(lemon.server_c2s_thread_num),
       _s2s_thread_num(lemon.server_s2s_thread_num), 
       _server_load_thread_num(lemon.server_load_thread_num),
+      _server_dcpmm_replace_dead_node_wait_time_second(lemon.server_dcpmm_replace_dead_node_wait_time_second),
       _load_block_size(lemon.server_load_block_size),
       _io_tg(lemon.server_load_thread_num),
       _report_interval(lemon.report_interval),
@@ -71,7 +76,7 @@ void Server::initialize() {
     if (_report_interval != -1) {
         _self_monitor_thread = std::thread(&Server::self_monitor, this);
     }
-    SLOG(INFO) << "PServer intialize finished, start to serve";
+    SLOG(INFO) << "PServer intialize finished, start to serve with node id [" << _node_id << "]";
 }
 
 void Server::finalize() {
@@ -133,10 +138,9 @@ void Server::exit() {
     //}
 //}
 
-void Server::restore_storages(bool use_pmem_restore, comm_rank_t dead_rank) {
+void Server::_replace_dead_node(comm_rank_t& dead_rank, std::vector<int32_t>& to_restore_tables) {
     _master_client->acquire_lock(PSERVER_LOCK_NAME);
     auto storage_list = _master_client->get_storage_list();
-    std::vector<int32_t> tables;
     RpcServiceInfo service_info;
     //_rpc_service->
     _master_client->get_rpc_service_info(
@@ -172,18 +176,31 @@ void Server::restore_storages(bool use_pmem_restore, comm_rank_t dead_rank) {
         }
         if (loading) {
             _ctx.SetTableDescriptor(storage_id, std::move(ptd));
-            tables.emplace_back(storage_id);
+            to_restore_tables.emplace_back(storage_id);
         }
     }
     _master_client->release_lock(PSERVER_LOCK_NAME);
-    if (tables.empty()) {
+}
+
+void Server::restore_storages(bool use_pmem_restore, comm_rank_t dead_rank) {
+    std::vector<int32_t> to_restore_tables;
+    _replace_dead_node(dead_rank, to_restore_tables);
+    if (to_restore_tables.empty()) {
         if (dead_rank == EMPTY_COMM_RANK) {
             SLOG(WARNING) << "no dead node!";
         } else {
-            SLOG(WARNING) << "node " << dead_rank << " is not a dead node!";
+            // 这里一定是 use_pemem_retore = true, 出现的情况可能是：1.其他node替代了当前node进行初始化；2. 该 dead_node 本身没存 storage。
+            SLOG(WARNING) << "node " << dead_rank << " is probably not a dead node! Wait for " << _server_dcpmm_replace_dead_node_wait_time_second
+                          << " seconds to use network-based restore method.";
+            // 如果 dcpmm 中保存的 node_rank 不是 dead node 的话，应该替换一个其他的 dead_node 尝试以老的方式恢复。
+            std::this_thread::sleep_for(std::chrono::seconds(_server_dcpmm_replace_dead_node_wait_time_second));
+            SLOG(INFO) << "Try to find a dead node to replace and restore.";
+            dead_rank = EMPTY_COMM_RANK;
+            _replace_dead_node(dead_rank, to_restore_tables);
         }
     }
-    for (auto& storage_id : tables) {
+    std::unordered_map<int32_t, std::unordered_set<int32_t>> retained_storage_shard;
+    for (auto& storage_id : to_restore_tables) {
         TableDescriptorWriter wtd;
         auto status = _ctx.GetTableDescriptorWriter(storage_id, wtd);
         SCHECK(status.ok()) << status.ToString();
@@ -193,21 +210,43 @@ void Server::restore_storages(bool use_pmem_restore, comm_rank_t dead_rank) {
         Context::update_handlers(td);
         Context::update_runtime_info(td, _node_id);
         SLOG(INFO) << "Trying to restore storage id: " << storage_id << " dead rank " << dead_rank;
-        // TODO 无法区分
+        td.storage = static_cast<StorageOperator*>(td.storage_op.get())
+                         ->create_storage(*td.runtime_info, storage_id);
+        bool check_pass = true;
+
         if (use_pmem_restore) {
-            // add by cc pmem 接口修改 add one more para: storage_id
-            td.storage = static_cast<StorageOperator*>(td.storage_op.get())
-                            ->create_storage(*td.runtime_info, storage_id);
-        } else {
-            td.storage = static_cast<StorageOperator*>(td.storage_op.get())
-                            ->create_storage(*td.runtime_info, storage_id);
-            restore_storage(storage_id, td);
+            // 判断本地 dcpmm 与 zk 的 table 信息版本是否一致。如果不一致，清空本地 dcpmm 存储，以老的方式恢复。
+            check_pass = td.storage->sanity_check(storage_id, td);
+            if (!check_pass) {
+                LOG(INFO) << "Version uuid check failed, local: " << td.storage->load_version_uuid() << " vs. master: " << td.version_uuid;
+            }
+        }
+        if (td.storage->need_remote_restore() || !check_pass) {
+#ifdef USE_DCPMM
+            if (use_pmem_restore) {
+                SLOG(WARNING) << "Storage id " << storage_id << " fallback to restore using network instead of local dcpmm.";
+                DCPmemory::singleton().remove_storage(storage_id);
+                td.storage.reset();
+                td.storage = static_cast<StorageOperator*>(td.storage_op.get())
+                                 ->create_storage(*td.runtime_info, storage_id);
+            }
+#endif  // USE_DCPMM
+            restore_storage_by_network(storage_id, td);
+            td.storage->store_version_uuid(td.version_uuid);
         }
         SLOG(INFO) << "restored storage: " << storage_id << " shards: " << td.runtime_info->local_shards_str();
+        retained_storage_shard.emplace(storage_id, td.runtime_info->local_shards());
     }
+#ifdef USE_DCPMM
+    // 把本地上的 dcpmm 不必要的 storage 删除。
+    if (use_pmem_restore) {
+        DCPmemory::singleton().remove_storage_exclude(
+                std::unordered_set<int32_t>(to_restore_tables.begin(), to_restore_tables.end()));
+    }
+#endif  // USE_DCPMM
 
     _master_client->acquire_lock(PSERVER_LOCK_NAME);
-    for (auto& storage_id : tables) {
+    for (auto& storage_id : to_restore_tables) {
         SCHECK(set_node_status_to_running(storage_id));
         SLOG(INFO) << "restored storage: " << storage_id << " node: " << _node_id << " running";
     }
@@ -215,7 +254,7 @@ void Server::restore_storages(bool use_pmem_restore, comm_rank_t dead_rank) {
     SLOG(INFO) << "restore storage finished.";
 }
 
-void Server::restore_storage(int32_t storage_id, TableDescriptor& td) {
+void Server::restore_storage_by_network(int32_t storage_id, TableDescriptor& td) {
     bool restored = restore_storage_coordinated(storage_id, td);
     if (!restored) {
         SLOG(INFO) << "Failed to restore from peer. Restore from fs instead, storage id: " << storage_id;
@@ -460,11 +499,6 @@ Status Server::create_storage(int32_t storage_id,
     Context::update_runtime_info(td.table(), _node_id);
     auto stop = static_cast<StorageOperator*>(op.get());
     
-    //add by cc
-    //VTIMER(1, service, stop->create_storage, ms);
-    // pass one more para: storage_id  
-    // 因为在class PmemHashMapShardStorage(in pico-ps/storage/KVShardStorage.h) 中创建pmem concurrent hashmap的时候
-    // 同时需要按 storage_id+shard_id 为key，把新创建的hashmap插入到global的pmem hash map 中for fast recovery. 
     td.table().storage = stop->create_storage(*td.table().runtime_info, storage_id); 
     return status;
 }
@@ -923,8 +957,15 @@ void Server::process_new_ctx_create_shard_request(const PSMessageMeta& meta,
     Storage* st;
     if (td.table().runtime_info->nodes().count(_node_id)) {
         st = td.table().storage.get();
+#ifdef USE_DCPMM
+        if (st->use_dcpmm()) {
+            DCPmemory::singleton().remove_storage(-1);
+            td.table().update_storage.reset(); 
+        }
+#endif  // USE_DCPMM
         td.table().update_storage = op->create_storage(*td.table().new_runtime_info, -1);
     } else {
+        td.table().update_storage = nullptr;
         td.table().storage = op->create_storage(*td.table().new_runtime_info, meta.sid);
         st = td.table().storage.get();
     }
@@ -1100,6 +1141,12 @@ void Server::process_ctx_update_request(const PSMessageMeta& meta, PSResponse& r
     if(auto st = dynamic_cast<ShardStorage*>(old_td.table().update_storage.get())){
         update_shards(old_td.table().new_runtime_info.get(), st);
     }
+#ifdef USE_DCPMM
+    Storage* st = old_td.table().storage.get();
+    if (st->use_dcpmm()) {
+        st->store_version_uuid(old_td.table().version_uuid);
+    }
+#endif // USE_DCPMM
 }
 
 void Server::process_sync_request(PSRequest& req,
