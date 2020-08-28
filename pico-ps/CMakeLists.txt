@@ -35,18 +35,7 @@ endif()
 option(USE_DCPMM "whether build with dcpmm support" OFF)
 if (USE_DCPMM)
     add_definitions(-DUSE_DCPMM)
-
-    set(LIBPMEMOBJ_REQUIRED_VERSION 1.8)
-    set(LIBPMEM_REQUIRED_VERSION 1.8)
-
-    find_package(PkgConfig QUIET)
-    if (PKG_CONFIG_FOUND)
-        pkg_check_modules(LIBPMEMOBJ REQUIRED libpmemobj>=${LIBPMEMOBJ_REQUIRED_VERSION})
-        pkg_check_modules(LIBPMEM REQUIRED libpmem>=${LIBPMEM_REQUIRED_VERSION})
-    else()
-        find_package(LIBPMEMOBJ REQUIRED)
-        find_package(LIBPMEM REQUIRED)
-    endif()
+    find_package(PMEM REQUIRED)
     message(STATUS "DCPMM enabled")
 else()
     message(STATUS "DCPMM disabled")
@@ -70,10 +59,10 @@ file(GLOB PS_SRC api/*.cpp common/*.cpp handler/*.cpp model/*.cpp native_ps/*.cp
 add_library(pico_ps_obj OBJECT ${PS_SRC})
 
 add_library(pico_ps_static STATIC $<TARGET_OBJECTS:pico_ps_obj>)
-target_link_libraries(pico_ps_static PUBLIC pico_core_static ${PicoCoreDep_STATIC_LIBRARIES} ${RDMA_LIBRARIES} ${Jemalloc_pic_LIBRARIES} ${LIBPMEMOBJ_LIBRARIES} ${LIBPMEMOBJ++_LIBRARIES} dl)
+target_link_libraries(pico_ps_static PUBLIC pico_core_static ${PicoCoreDep_STATIC_LIBRARIES} ${RDMA_LIBRARIES} ${Jemalloc_pic_LIBRARIES} ${PMEM_STATIC_LIBRARIES} ${NDCTL_LIBRARIES} dl)
 
 add_library(pico_ps SHARED $<TARGET_OBJECTS:pico_ps_obj>)
-target_link_libraries(pico_ps PUBLIC pico_core ${PicoCoreDep_LIBRARIES} ${RDMA_LIBRARIES} ${Jemalloc_pic_LIBRARIES} ${LIBPMEMOBJ_LIBRARIES} ${LIBPMEMOBJ++_LIBRARIES} dl)
+target_link_libraries(pico_ps PUBLIC pico_core ${PicoCoreDep_LIBRARIES} ${RDMA_LIBRARIES} ${Jemalloc_pic_LIBRARIES} ${PMEM_LIBRARIES} ${NDCTL_LIBRARIES} dl)
 
 if (NOT SKIP_BUILD_TEST)
     add_subdirectory(test)
