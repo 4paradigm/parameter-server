@@ -6,10 +6,12 @@ namespace ps {
 
 void CoordinatedRestoreProgress::prepare() {
     for (auto &shard : _td->shards) {
-        if (shard.second.size() == 0) {
-            _no_replica = true;
+        if (_td->runtime_info->local_shards().count(shard.first) != 0) {
+            if (shard.second.size() == 0) {
+                _no_replica = true;
+            }
+            _pending_shards.push(shard.first);
         }
-        _pending_shards.push(shard.first);
     }
     if (!_no_replica && _pending_shards.size() > 0) {
         _running = true;
