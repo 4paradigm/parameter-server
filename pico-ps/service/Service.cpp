@@ -47,11 +47,11 @@ Server::Server(const ServerConfig& lemon,
       _hadoop_bin(hadoop_bin) {
     _c2s_thread.resize(_c2s_thread_num);
     _s2s_thread.resize(_s2s_thread_num);
-    _c2s_server = _rpc_service->create_server(PSERVER_C2S_RPC_NAME);
-    _node_id = _c2s_server->id();
     _s2s_server = _rpc_service->create_server(PSERVER_S2S_RPC_NAME, _node_id);
-    _c2s_client = _rpc_service->create_client(PSERVER_C2S_RPC_NAME);
     _s2s_client = _rpc_service->create_client(PSERVER_S2S_RPC_NAME);
+    _c2s_server = _rpc_service->create_server(PSERVER_C2S_RPC_NAME);
+    _c2s_client = _rpc_service->create_client(PSERVER_C2S_RPC_NAME);
+    _node_id = _c2s_server->id();
     SLOG(INFO) << "my node id is : " << _node_id;
 }
 
