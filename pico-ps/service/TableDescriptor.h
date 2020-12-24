@@ -145,7 +145,11 @@ struct TableDescriptor {
 
     bool update_node_status(const std::unordered_set<int>& live_servers);
 
-    int loading_dead_node(int my_node_id, int dead_node_id);
+    // target_dead_node_id 是目标要替换的 dead node id，如果找到的dead node 里没有匹配的 dead node id，
+    // 即使有 dead node，该函数也不会替换此 node。
+    // 当 target_dead_node_id 为 -1 时，没有此限制。
+    // 返回值：替换掉的 dead node id，-1 表示没有替换。
+    int try_to_replace_one_dead_node(int my_node_id, int target_dead_node_id);
 
     // 将 node descriptor 中此 node 状态中的 LOADING 状态改为 RUNNING 状态。
     bool set_node_status_to_running(int my_node_id);

@@ -72,12 +72,37 @@ public:
     }
 
 protected:
-    Status apply_response(PSResponse& resp, PSMessageMeta&)override {
+    Status apply_response(PSResponse& resp, PSMessageMeta&) override {
         Status status;
         resp >> status;
         SCHECK(status.ok());
         return Status();
     }
+};
+
+class HealthCheckDistributedAsyncReturn : public DefaultDistributedAsyncReturn {
+public:
+    HealthCheckDistributedAsyncReturn(RpcClient* rpc_client)
+        : DefaultDistributedAsyncReturn(rpc_client) {}
+
+    Status health_check(std::vector<int> node_ids, int timeout = -1) {
+        std::vector<PSRequest> reqs;
+        for (auto& node_id : node_ids) {
+            SLOG(INFO) << "Will check heath of server with node id: " << node_id;
+            reqs.emplace_back(node_id);
+        }
+        return default_sync_rpc(std::move(reqs), {0, 0, -1, -1, RequestType::HEALTH_CHECK}, timeout);
+    }
+
+protected:
+    Status apply_response(PSResponse& resp, PSMessageMeta&) override {
+        Status status;
+        int32_t node_id;
+        resp >> status >> node_id;
+        SLOG(INFO) << "Heatch check " << node_id << " OK";
+        return Status();
+    }
+
 };
 
 class StorageDistributedAsyncReturn : public DistributedAsyncReturn {

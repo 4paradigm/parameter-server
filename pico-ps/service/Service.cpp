@@ -38,6 +38,7 @@ Server::Server(const ServerConfig& lemon,
     : _c2s_thread_num(lemon.server_c2s_thread_num),
       _s2s_thread_num(lemon.server_s2s_thread_num), 
       _server_load_thread_num(lemon.server_load_thread_num),
+      _server_restore_wait_timeout_second(lemon.server_restore_wait_timeout_second),
       _server_dcpmm_replace_dead_node_wait_time_second(lemon.server_dcpmm_replace_dead_node_wait_time_second),
       _load_block_size(lemon.server_load_block_size),
       _io_tg(lemon.server_load_thread_num),
@@ -45,6 +46,13 @@ Server::Server(const ServerConfig& lemon,
       _master_client(master_client), 
       _rpc_service(rpc_service),
       _hadoop_bin(hadoop_bin) {
+    if (_server_restore_wait_timeout_second == -1) {
+        _server_restore_wait_timeout_second = 2 * master_client->session_timeout_ms() / 1000;
+        SLOG(INFO) << "Server restore wait time out is set as -1."
+                   << " Use 2x session timeout of MasterClient as the wait time."
+                   << " session timeout in second: " << master_client->session_timeout_ms() / 1000
+                   << " server restore wait timeout in second: " << _server_restore_wait_timeout_second;
+    }
     _c2s_thread.resize(_c2s_thread_num);
     _s2s_thread.resize(_s2s_thread_num);
     _s2s_server = _rpc_service->create_server(PSERVER_S2S_RPC_NAME);
@@ -138,11 +146,11 @@ void Server::exit() {
     //}
 //}
 
-void Server::_replace_dead_node(comm_rank_t& dead_rank, std::vector<int32_t>& to_restore_tables) {
+int32_t Server::_find_dead_node_and_replace(int32_t possible_dead_node_id, std::vector<int32_t>& to_restore_tables) {
+    int found_dead_node_id = -1;
     _master_client->acquire_lock(PSERVER_LOCK_NAME);
     auto storage_list = _master_client->get_storage_list();
     RpcServiceInfo service_info;
-    //_rpc_service->
     _master_client->get_rpc_service_info(
           _rpc_service->rpc_service_api(), PSERVER_C2S_RPC_NAME, service_info);
     SLOG(INFO) << "get service info : " << service_info;
@@ -165,38 +173,87 @@ void Server::_replace_dead_node(comm_rank_t& dead_rank, std::vector<int32_t>& to
             SLOG(WARNING) << "table json error:" << str;
             continue;
         }
-        bool loading = false;
         if (td.update_node_status(live_servers)) {
-            auto r = td.loading_dead_node(_node_id, dead_rank);
-            if (r != EMPTY_COMM_RANK) {
-                dead_rank = r;
-                loading = true;
-            }
+            found_dead_node_id = td.try_to_replace_one_dead_node(_node_id, possible_dead_node_id);
             _master_client->set_context(storage_id, td.to_json_str());
         }
-        if (loading) {
+        if (found_dead_node_id != -1) {
+            SLOG(INFO) << "Dead node id : " << found_dead_node_id << " detected";
             _ctx.SetTableDescriptor(storage_id, std::move(ptd));
             to_restore_tables.emplace_back(storage_id);
+        } else {
+            SLOG(INFO) << "No dead node indicated by master";
         }
     }
     _master_client->release_lock(PSERVER_LOCK_NAME);
+    return found_dead_node_id;
 }
 
-void Server::restore_storages(bool use_pmem_restore, comm_rank_t dead_rank) {
+bool Server::test_connections() {
+    RpcServiceInfo service_info;
+    _master_client->get_rpc_service_info(
+          _rpc_service->rpc_service_api(), PSERVER_C2S_RPC_NAME, service_info);
+    SLOG(INFO) << "get service info : " << service_info;
+    std::vector<int> server_node_ids;
+    for (const auto& server_info : service_info.servers) {
+        if (server_info.server_id != _node_id) {
+            server_node_ids.emplace_back(server_info.server_id);
+        }
+    }
+    HealthCheckDistributedAsyncReturn async_ret(_s2s_client.get());
+    auto status = async_ret.health_check(server_node_ids, _server_restore_wait_timeout_second * 1000);
+    if (!status.ok()) {
+        SLOG(WARNING) << "Server health check failed. " << status.ToString();
+        return false;
+    }
+    return true;
+}
+
+int32_t Server::replace_dead_node_in_loop(int looping_time_seconds, int32_t possible_dead_node_id, std::vector<int32_t>& to_restore_tables) {
+    int round_wait_seconds = 5;
+
+    auto start = std::chrono::system_clock::now();
+
+    int remaining_seconds = looping_time_seconds;
+
+    while (remaining_seconds > 0) {
+        std::this_thread::sleep_for(std::chrono::seconds(std::max(round_wait_seconds, remaining_seconds)));
+
+        int32_t found_dead_node_id = _find_dead_node_and_replace(possible_dead_node_id, to_restore_tables);
+        if (found_dead_node_id != -1) {
+            return found_dead_node_id;
+        }
+        std::chrono::duration<double> elapsed_seconds = std::chrono::system_clock::now() - start;
+
+        remaining_seconds = looping_time_seconds - std::ceil(elapsed_seconds.count());
+        if (looping_time_seconds > 0) {
+            SLOG(INFO) << "Checking loop remains " << looping_time_seconds << " seconds";
+        }
+    }
+    return -1;
+}
+
+void Server::restore_storages(bool use_pmem_restore, int32_t possible_dead_node_id) {
     std::vector<int32_t> to_restore_tables;
-    _replace_dead_node(dead_rank, to_restore_tables);
-    if (to_restore_tables.empty()) {
-        if (dead_rank == EMPTY_COMM_RANK) {
-            SLOG(WARNING) << "no dead node!";
-        } else {
-            // 这里一定是 use_pemem_retore = true, 出现的情况可能是：1.其他node替代了当前node进行初始化；2. 该 dead_node 本身没存 storage。
-            SLOG(WARNING) << "node " << dead_rank << " is probably not a dead node! Wait for " << _server_dcpmm_replace_dead_node_wait_time_second
-                          << " seconds to use network-based restore method.";
-            // 如果 dcpmm 中保存的 node_rank 不是 dead node 的话，应该替换一个其他的 dead_node 尝试以老的方式恢复。
-            std::this_thread::sleep_for(std::chrono::seconds(_server_dcpmm_replace_dead_node_wait_time_second));
-            SLOG(INFO) << "Try to find a dead node to replace and restore.";
-            dead_rank = EMPTY_COMM_RANK;
-            _replace_dead_node(dead_rank, to_restore_tables);
+    // NOTES(wj): 当 use_pmem_restore == false 时, possible_dead_node_id 一定是-1.
+    auto found_dead_node_id = _find_dead_node_and_replace(possible_dead_node_id, to_restore_tables);
+    if (found_dead_node_id == -1) {
+        bool test_connection_ok = test_connections();
+        if (!test_connection_ok) {
+            SLOG(INFO) << "No dead node indicated by master, but pserver health check failed. "
+                       << " Check in loop for " << _server_restore_wait_timeout_second << " second "
+                       << " to wait server list to refresh.";
+            replace_dead_node_in_loop(_server_restore_wait_timeout_second, possible_dead_node_id, to_restore_tables);
+        }
+        if (use_pmem_restore && to_restore_tables.empty()) {
+            if (possible_dead_node_id != -1) {
+                SLOG(WARNING) << "Node id " << possible_dead_node_id << " is probably not a dead node. Wait for " << _server_dcpmm_replace_dead_node_wait_time_second
+                    << " seconds to use network-based restore method.";
+                // 如果 dcpmm 中保存的 node_rank 不是 dead node 的话，应该替换一个其他的 dead_node 尝试以老的方式恢复。
+                std::this_thread::sleep_for(std::chrono::seconds(_server_dcpmm_replace_dead_node_wait_time_second));
+            }
+            SLOG(INFO) << "Try to find a new dead node to replace and restore, instead of previous possible dead node id: " << possible_dead_node_id;
+            found_dead_node_id = _find_dead_node_and_replace(-1, to_restore_tables);
         }
     }
     std::unordered_map<int32_t, std::unordered_set<int32_t>> retained_storage_shard;
@@ -209,7 +266,7 @@ void Server::restore_storages(bool use_pmem_restore, comm_rank_t dead_rank) {
         Context::initialize_storage_op(td);
         Context::update_handlers(td);
         Context::update_runtime_info(td, _node_id);
-        SLOG(INFO) << "Trying to restore storage id: " << storage_id << " dead rank " << dead_rank;
+        SLOG(INFO) << "Trying to restore storage id: " << storage_id << " dead node id " << found_dead_node_id;
         td.storage = static_cast<StorageOperator*>(td.storage_op.get())
                          ->create_storage(*td.runtime_info, storage_id);
         bool check_pass = true;
@@ -340,6 +397,9 @@ void Server::process_s2s_request() {
             break;
         case RequestType::OP_COORDINATED_RESTORE_ITERATE:
             process_coordinate_restore_iterate_request(req, meta, resp);
+            break;
+        case RequestType::HEALTH_CHECK:
+            process_health_check_request(req, meta, resp);
             break;
         default:
             SLOG(FATAL) << "irrelavent request type: " << int(meta.req_type);
@@ -876,6 +936,15 @@ void Server::process_load_request(PSRequest& req,
     op->apply_load_request(meta,*td.table().runtime_info, req, td.table().storage.get(),
         resp, td.table().version, _s2s_client.get());
 }
+
+void Server::process_health_check_request(PSRequest&,
+      const PSMessageMeta&,
+      PSResponse& resp) {
+    Status status;
+    resp << status;
+    resp << _node_id;
+}
+
 
 void Server::process_s2s_async_push_request(PSRequest& req,
       const PSMessageMeta& meta,

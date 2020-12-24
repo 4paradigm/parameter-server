@@ -37,6 +37,7 @@ enum class RequestType : int8_t {
     OP_SYNC = 21,
     MEMORY_INFO = 22,
     OP_COORDINATED_RESTORE_ITERATE = 23,
+    HEALTH_CHECK = 24,
 };
 PICO_ENUM_SERIALIZATION(RequestType, int32_t);
 

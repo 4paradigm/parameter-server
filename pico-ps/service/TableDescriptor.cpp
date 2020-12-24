@@ -258,18 +258,18 @@ bool TableDescriptor::update_node_status(const std::unordered_set<int>& live_ser
     return ret;
 }
 
-int TableDescriptor::loading_dead_node(int my_rank, int dead_rank) {
+int TableDescriptor::try_to_replace_one_dead_node(int my_node_id, int target_dead_node_id) {
     for (auto& it : node_descs) {
         if (it.status == NodeStatus::DEAD 
-                && (dead_rank == EMPTY_COMM_RANK || dead_rank == it.node_id)) {
-            dead_rank = it.node_id;
-            it.node_id = my_rank;
+                && (target_dead_node_id == -1 || target_dead_node_id == it.node_id)) {
+            target_dead_node_id = it.node_id;
+            it.node_id = my_node_id;
             it.status = NodeStatus::LOADING;
             version++;
-            return dead_rank;         
+            return target_dead_node_id;
         }
     }
-    return EMPTY_COMM_RANK;
+    return -1;
 }
 
 bool TableDescriptor::set_node_status_to_running(int my_rank) {

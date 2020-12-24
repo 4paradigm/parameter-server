@@ -26,6 +26,13 @@ struct ServerConfig {
       size_t server_load_thread_num = 4;
       size_t server_load_block_size = 1000;
       size_t report_interval = -1;
+      // pserver 启动尝试 restore 一个 node 时，如果发现没有需要 restore 的 node，不一定是真的没有。
+      // pserver live servers 是根据 zk 中保存的 rpc server 信息判断的，
+      // 很多时候，pserver 重启后上一次的信息还能查询到，
+      // 这里要等待一个 zk 判断 node 超时的时间，才能让新启动的 pserver 发现已经需要 restore 的 node。
+      // pserver 会在 server_restore_wait_timeout_second 的时间内循环等待 master 更新 server 信息。
+      // 如果设置的为 -1，server 将使用 zk session timeout 2 倍。
+      int32_t server_restore_wait_timeout_second = -1;
       // 当 dcpmm 中保存的节点信息不是 dead node，server 将会以传统方式替代一个检测到的 dead_node，并恢复。
       // 在以传统方式回复之前，会等待一段时间，目的是让其他能够以 dcpmm 恢复的节点尽量以 dcpmm 方式恢复。
       size_t server_dcpmm_replace_dead_node_wait_time_second = 60;
@@ -47,9 +54,9 @@ public:
           RpcService* rpc_service,
           const std::string& hadoop_bin = "");
 
-    int node_id() { return _node_id; }
+    int32_t node_id() { return _node_id; }
 
-    void restore_storages(bool use_pmem_restore, comm_rank_t dead_rank = EMPTY_COMM_RANK);
+    void restore_storages(bool use_pmem_restore, int possible_dead_node_id = -1);
 
     void set_sync_env(MasterClient* sync_master_client, RpcService* sync_rpc);
 
@@ -60,13 +67,16 @@ public:
     void exit();
 
 private:
+    bool test_connections();
+
     void restore_storage_by_network(int32_t storage_id, TableDescriptor& td);
 
     bool restore_storage_coordinated(int32_t storage_id, TableDescriptor& td);
 
     void restore_storage_from_fs(TableDescriptor& td);
 
-    void _replace_dead_node(comm_rank_t& dead_rank, std::vector<int32_t>& to_restore_tables);
+    // 返回替换掉的 dead node 的 node_id
+    int32_t _find_dead_node_and_replace(int32_t possible_dead_node_id, std::vector<int32_t>& to_restore_tables);
 
     void restore_storage_from_fs_worker(const std::vector<std::string>& files, TableDescriptor* td, RestoreOperator* op);
 
@@ -122,6 +132,10 @@ private:
     void process_load_library_request(PSRequest& req, PSResponse& resp);
 
     void process_load_request(PSRequest& req,
+          const PSMessageMeta& meta,
+          PSResponse& resp);
+
+    void process_health_check_request(PSRequest& req,
           const PSMessageMeta& meta,
           PSResponse& resp);
 
@@ -189,14 +203,18 @@ private:
 
     void push_sync_tables();
 
-    const size_t _c2s_thread_num, _s2s_thread_num, _server_load_thread_num, _server_dcpmm_replace_dead_node_wait_time_second;
+    int32_t replace_dead_node_in_loop(int looping_time_seconds, int32_t possible_dead_node_id, std::vector<int32_t>& to_restore_tables);
+
+    const size_t _c2s_thread_num, _s2s_thread_num, _server_load_thread_num;
+    int32_t _server_restore_wait_timeout_second;
+    const size_t _server_dcpmm_replace_dead_node_wait_time_second;
     size_t _load_block_size;
     std::vector<std::thread> _c2s_thread, _s2s_thread;
     ThreadGroup _io_tg;
     int _report_interval;
 
     Context _ctx;
-    comm_rank_t _node_id = -1;
+    int32_t _node_id = -1;
     MasterClient* _master_client = nullptr;
     RpcService* _rpc_service = nullptr;
     std::unique_ptr<RpcServer> _c2s_server;
