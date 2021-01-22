@@ -5,6 +5,7 @@
 #include "pico-ps/common/DistributedAsyncReturn.h"
 #include "pico-ps/common/defs.h"
 #include "pico-ps/operator/operators.h"
+#include "pico-ps/operator/RpcOperator.h"
 #include "pico-ps/handler/SyncHandler.h"
 #include "pico-ps/model/Model.h"
 #include "pico-ps/service/coordinated_restore/CoordinatedRestoreController.h"
@@ -480,6 +481,9 @@ void Server::process_c2s_request() {
         case RequestType::OP_STORE:
             process_store_request(req, meta, send_response);
             break;
+        case RequestType::OP_RPC:
+            process_rpc_operator(req, meta, dealer.get());
+            break;
         case RequestType::OP_LOAD_LIBRARY:
             process_load_library_request(req, resp);
             break;
@@ -520,7 +524,8 @@ void Server::process_c2s_request() {
         }
 
         if (meta.req_type == RequestType::OP_LOAD ||
-            meta.req_type == RequestType::OP_STORE) {
+            meta.req_type == RequestType::OP_STORE ||
+            meta.req_type == RequestType::OP_RPC) {
             continue;
         }
         // SCHECK(req.archive().is_exhausted());
@@ -922,6 +927,52 @@ void Server::process_load_library_request(PSRequest& req, PSResponse& resp) {
                    << "\" failed, $LD_LIBRARY_PATH=" << std::getenv("LD_LIBRARY_PATH");
         resp << Status::Error("load SO failed.");
     }
+}
+
+void Server::process_rpc_operator(PSRequest& req,
+      const PSMessageMeta& meta,
+      Dealer* dealer) {
+    DurationObserver observer(
+            metrics_histogram(PS_REQUEST_DURATION_MS_BUCKET,
+                PS_REQUEST_DURATION_MS_BUCKET_DESC,
+                {{"request_type", "c2s_rpc_op"}},
+                METRICS_LATENCY_BOUNDARY));
+    metrics_counter(PS_REQUESTS_TOTAL,
+            PS_REQUESTS_TOTAL_DESC,
+            {{"request_type", "c2s_rpc_op"}}).Increment();
+    TableDescriptorReader td;
+    auto status = _ctx.GetTableDescriptorReader(meta.sid, td);
+    if (!status.ok()) {
+        SLOG(WARNING) << status.ToString();
+        PSResponse resp(req);
+        resp.rpc_response().set_error_code(RpcErrorCodeType::ELOGICERROR);
+        resp << status << meta;
+        dealer->send_response(std::move(resp.rpc_response()));
+        metrics_counter(PS_ERRORS_TOTAL,
+                PS_ERRORS_TOTAL_DESC,
+                {{"request_type", "c2s_rpc_op"}}).Increment();
+        return;
+    }
+    auto it = td.table().handlers.find(meta.hid);
+    SCHECK(it != td.table().handlers.end()) << meta.hid;
+    auto op = static_cast<RpcOperatorBase*>(it->second.get());
+    if (op->read_only()) {
+        status = check_ctx_version(meta, td);
+    } else {
+        status = check_write_ctx_version(meta, td);
+    }
+    if (!status.ok()) {
+        SLOG(WARNING) << status.ToString() << ' ' << meta.ctx_ver << ' ' << td.table().version;
+        PSResponse resp(req);
+        resp.rpc_response().set_error_code(RpcErrorCodeType::ELOGICERROR);
+        resp << status << meta;
+        dealer->send_response(std::move(resp.rpc_response()));
+        metrics_counter(PS_ERRORS_TOTAL,
+                PS_ERRORS_TOTAL_DESC,
+                {{"request_type", "c2s_rpc_op"}}).Increment();
+        return;
+    }
+    op->apply_request(meta, req, td.table(), dealer);
 }
 
 void Server::process_load_request(PSRequest& req,

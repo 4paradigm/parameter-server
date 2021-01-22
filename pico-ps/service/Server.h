@@ -129,6 +129,10 @@ private:
           const PSMessageMeta& meta,
           std::function<void(PSResponse&&)> send_response);
 
+    void process_rpc_operator(PSRequest& req,
+          const PSMessageMeta& meta,
+          Dealer* dealer);
+
     void process_load_library_request(PSRequest& req, PSResponse& resp);
 
     void process_load_request(PSRequest& req,
