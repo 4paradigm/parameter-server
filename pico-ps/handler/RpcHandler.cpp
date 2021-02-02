@@ -6,7 +6,6 @@ namespace paradigm4 {
 namespace pico {
 namespace ps {
 
-
 void RpcHandler::call(void* param, int timeout) {
     auto op = static_cast<RpcOperatorBase*>(_op.get());
     if (!_param) {
@@ -31,10 +30,18 @@ void RpcHandler::retry(int timeout) {
     call(_param.get(), timeout);  
 }
 
-Status RpcHandler::apply_response(PSResponse& resp, PSMessageMeta&) {
-    return static_cast<RpcOperatorBase*>(_op.get())->apply_response(resp, _state.get());
+void RpcHandler::set_wait_result(void* result) {
+    _result = result;
 }
 
+Status RpcHandler::apply_response(PSResponse& resp, PSMessageMeta&) {
+    return static_cast<RpcOperatorBase*>(_op.get())->apply_response(resp, _state.get(), _result);
+}
+
+void RpcHandler::release_dealer() {
+    _result = nullptr;
+}
+    
 } // namespace ps
 } // namespace pico
 } // namespace paradigm4

@@ -33,7 +33,7 @@ public:
 
     virtual void apply_request(const PSMessageMeta& meta, PSRequest&, const TableDescriptor&, Dealer* dealer) = 0;
 
-    virtual Status apply_response(PSResponse&, void* state) = 0;
+    virtual Status apply_response(PSResponse&, void* state, void* result) = 0;
 
     const Configure& op_config() {
         return _config;
@@ -43,7 +43,7 @@ protected:
     Configure _config;
 };
 
-template<class Param, class State>
+template<class Param, class State> // result不用create
 class RpcOperator: public RpcOperatorBase  {
 public:
     RpcOperator(const Configure& config) : RpcOperatorBase(config) {}
@@ -68,13 +68,13 @@ public:
         return generate_request(*static_cast<Param*>(param), rt, *static_cast<State*>(state), reqs);
     }
 
-    Status apply_response(PSResponse& resp, void* state) {
-        return apply_response(resp, *static_cast<State*>(state));
+    Status apply_response(PSResponse& resp, void* state, void* result) {
+        return apply_response(resp, *static_cast<State*>(state), result);
     }
 
     virtual Status generate_request(Param& param, RuntimeInfo& rt, State& state, std::vector<PSRequest>& reqs) = 0;
 
-    virtual Status apply_response(PSResponse&, State& state) = 0;
+    virtual Status apply_response(PSResponse&, State& state, void* result) = 0;
 
     const Configure& op_config() {
         return _config;
