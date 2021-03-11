@@ -4,9 +4,18 @@
 
 #include "pico-ps/common/defs.h"
 
+#include <pico-core/observability/metrics/DurationObserver.h>
+#include <pico-core/observability/metrics/Metrics.h>
+
 namespace paradigm4 {
 namespace pico {
 namespace ps {
+
+std::string PS_WAIT_DURATION_MS_BUCKET = "ps_wait_duration_ms_bucket";
+std::string PS_WAIT_DURATION_MS_BUCKET_DESC = "ps handler wait durations histogram in millisecond";
+std::string PS_WAIT_REQUEST_COUNT = "ps_wait_request_count";
+std::string PS_WAIT_REQUEST_COUNT_DESC = "ps handler wait request count";
+std::vector<double> HANDLER_METRICS_LATENCY_BOUNDARY = Metrics::create_general_duration_bucket();
 
 Handler::Handler(
         int32_t storage_id,
@@ -37,6 +46,14 @@ static inline void reduce_time(int dur, int& timeout) {
 
 Status Handler::wait() {
     SCHECK(_busy && _client != nullptr);
+    DurationObserver observer(
+            metrics_histogram(PS_WAIT_DURATION_MS_BUCKET,
+                PS_WAIT_DURATION_MS_BUCKET_DESC,
+                {{"storage_id", std::to_string(_meta.sid)}, {"handler_id", std::to_string(_meta.hid)}},
+                HANDLER_METRICS_LATENCY_BOUNDARY));
+    metrics_counter(PS_WAIT_REQUEST_COUNT,
+            PS_WAIT_REQUEST_COUNT_DESC,
+            {{"storage_id", std::to_string(_meta.sid)}, {"handler_id", std::to_string(_meta.hid)}}).Increment(_req_num);
     auto begin = std::chrono::high_resolution_clock::now();
     auto status = wait_no_release();
     int timeout = _timeout;

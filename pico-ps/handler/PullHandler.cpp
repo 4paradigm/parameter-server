@@ -1,9 +1,18 @@
 #include <algorithm>
 #include "pico-ps/handler/PullHandler.h"
 
+#include <pico-core/observability/metrics/DurationObserver.h>
+#include <pico-core/observability/metrics/Metrics.h>
+
 namespace paradigm4 {
 namespace pico {
 namespace ps {
+
+std::string PS_PULL_SEND_DURATION_MS_BUCKET = "ps_pull_send_duration_ms_bucket";
+std::string PS_PULL_SEND_DURATION_MS_BUCKET_DESC = "ps handler pull send durations histogram in millisecond";
+std::string PS_PULL_SEND_REQUEST_COUNT = "ps_pull_send_request_count";
+std::string PS_PULL_SEND_REQUEST_COUNT_DESC = "ps handler send request count";
+std::vector<double> PULL_HANDLER_METRICS_LATENCY_BOUNDARY = Metrics::create_general_duration_bucket();
 
 std::string storage_rank_str(int32_t storage_id, comm_rank_t rank) {
     return "storage_id: " + std::to_string(storage_id) + ", rank: " + std::to_string(rank);
@@ -92,6 +101,11 @@ Status PullHandler::apply_response(PSResponse& resp, PSMessageMeta&) {
 void PullHandler::pull(const PSMessageMeta& meta,
       pico::vector<std::unique_ptr<PullItems>>&& items,
       int timeout) {
+    DurationObserver observer(
+            metrics_histogram(PS_PULL_SEND_DURATION_MS_BUCKET,
+                PS_PULL_SEND_DURATION_MS_BUCKET_DESC,
+                {{"storage_id", std::to_string(_meta.sid)}, {"handler_id", std::to_string(_meta.hid)}},
+                PULL_HANDLER_METRICS_LATENCY_BOUNDARY));
     // auto start_time = std::chrono::high_resolution_clock::now();
     TableDescriptorReader td;
     auto st = _client->context()->GetTableDescriptorReader(_storage_id, td);
@@ -120,6 +134,9 @@ void PullHandler::pull(const PSMessageMeta& meta,
     if (group.tids[_tid] != 0) {
         _send_status = op->generate_request(_request_data, *td.table().runtime_info, reqs);
     }
+    metrics_counter(PS_PULL_SEND_REQUEST_COUNT,
+            PS_PULL_SEND_REQUEST_COUNT_DESC,
+            {{"storage_id", std::to_string(meta.sid)}, {"handler_id", std::to_string(meta.hid)}}).Increment(reqs.size());
     send(std::move(reqs), {meta.sid, meta.hid, td.table().version, -1, meta.req_type}, timeout);
     _items = std::move(items);
 #ifndef NDEBUG

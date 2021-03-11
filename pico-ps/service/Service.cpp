@@ -703,12 +703,12 @@ void Server::process_pull_request(PSRequest& req,
     DurationObserver observer(
             metrics_histogram(PS_REQUEST_DURATION_MS_BUCKET,
                 PS_REQUEST_DURATION_MS_BUCKET_DESC,
-                {{"request_type", "c2s_pull"}},
+                {{"request_type", "c2s_pull"}, {"storage_id", std::to_string(meta.sid)}},
                 METRICS_LATENCY_BOUNDARY));
     metrics_counter(PS_REQUESTS_TOTAL,
             PS_REQUESTS_TOTAL_DESC,
-            {{"request_type", "c2s_pull"}}).Increment();
-    auto begin = std::chrono::high_resolution_clock::now();
+            {{"request_type", "c2s_pull"}, {"storage_id", std::to_string(meta.sid)}}).Increment();
+    // auto begin = std::chrono::high_resolution_clock::now();
     TableDescriptorReader td;
     auto status = _ctx.GetTableDescriptorReader(meta.sid, td);
     if (!status.ok()) { //check for predictor
@@ -719,7 +719,7 @@ void Server::process_pull_request(PSRequest& req,
         //        std::to_string(meta.sid), true, -1);
         metrics_counter(PS_ERRORS_TOTAL,
                 PS_ERRORS_TOTAL_DESC,
-                {{"request_type", "c2s_pull"}}).Increment();
+                {{"request_type", "c2s_pull"}, {"storage_id", std::to_string(meta.sid)}}).Increment();
         return;
     }
     auto it = td.table().handlers.find(meta.hid);
@@ -737,7 +737,7 @@ void Server::process_pull_request(PSRequest& req,
         //SpeedometerClient::thread_local_instance().write(std::to_string(meta.sid), true, -1);
         metrics_counter(PS_ERRORS_TOTAL,
                 PS_ERRORS_TOTAL_DESC,
-                {{"request_type", "c2s_pull"}}).Increment();
+                {{"request_type", "c2s_pull"}, {"storage_id", std::to_string(meta.sid)}}).Increment();
         return;
     }
 
@@ -755,14 +755,16 @@ void Server::process_pull_request(PSRequest& req,
     }
     metrics_counter(PS_REQUESTS_SIZE_BYTES,
             PS_REQUESTS_SIZE_BYTES_DESC,
-            {{"request_type", "c2s_pull"}}) .Increment(req.archive().length());
+            {{"request_type", "c2s_pull"}, {"storage_id", std::to_string(meta.sid)}}
+            ).Increment(req.archive().length());
     op->apply_request(*td.table().runtime_info, req, td.table().storage.get(), resp);
     metrics_counter(PS_RESPONSES_SIZE_BYTES,
             PS_RESPONSES_SIZE_BYTES_DESC,
-            {{"request_type", "c2s_pull"}}).Increment(resp.archive().length());
-    auto dur = std::chrono::high_resolution_clock::now() - begin;
-    //auto us = std::chrono::duration_cast<std::chrono::microseconds>(dur).count();
-    //SpeedometerClient::thread_local_instance().write(std::to_string(meta.sid), false, us);
+            {{"request_type", "c2s_pull"}, {"storage_id", std::to_string(meta.sid)}}
+            ).Increment(resp.archive().length());
+    // auto dur = std::chrono::high_resolution_clock::now() - begin;
+    // auto us = std::chrono::duration_cast<std::chrono::microseconds>(dur).count();
+    // SpeedometerClient::thread_local_instance().write(std::to_string(meta.sid), false, us);
 }
 
 void Server::process_sync_push_request(PSRequest& req,
@@ -818,11 +820,11 @@ void Server::process_async_push_request(PSRequest& req,
     DurationObserver observer(
             metrics_histogram(PS_REQUEST_DURATION_MS_BUCKET,
                 PS_REQUEST_DURATION_MS_BUCKET_DESC,
-                {{"request_type", "c2s_async_push"}},
+                {{"request_type", "c2s_async_push"}, {"storage_id", std::to_string(meta.sid)}},
                 METRICS_LATENCY_BOUNDARY));
     metrics_counter(PS_REQUESTS_TOTAL,
             PS_REQUESTS_TOTAL_DESC,
-            {{"request_type", "c2s_async_push"}}).Increment();
+            {{"request_type", "c2s_async_push"}, {"storage_id", std::to_string(meta.sid)}}).Increment();
     TableDescriptorReader td;
     auto status = _ctx.GetTableDescriptorReader(meta.sid, td);
     SCHECK(status.ok()) << status.ToString();
@@ -838,7 +840,7 @@ void Server::process_async_push_request(PSRequest& req,
         resp << status;
         metrics_counter(PS_ERRORS_TOTAL,
                 PS_ERRORS_TOTAL_DESC,
-                {{"request_type", "c2s_async_push"}}).Increment();
+                {{"request_type", "c2s_async_push"}, {"storage_id", std::to_string(meta.sid)}}).Increment();
         return;
     }
 
@@ -851,13 +853,13 @@ void Server::process_async_push_request(PSRequest& req,
     }
     metrics_counter(PS_REQUESTS_SIZE_BYTES,
             PS_REQUESTS_SIZE_BYTES_DESC,
-            {{"request_type", "c2s_async_push"}}).Increment(req.archive().length());
+            {{"request_type", "c2s_async_push"}, {"storage_id", std::to_string(meta.sid)}}).Increment(req.archive().length());
     push_op->apply_async_push_request(
                 *td.table().runtime_info, req, td.table().storage.get(), 
                 incr_storage, resp);
     metrics_counter(PS_RESPONSES_SIZE_BYTES,
             PS_RESPONSES_SIZE_BYTES_DESC,
-            {{"request_type", "c2s_async_push"}}).Increment(resp.archive().length());
+            {{"request_type", "c2s_async_push"}, {"storage_id", std::to_string(meta.sid)}}).Increment(resp.archive().length());
     if (td.table().incr_storage) {
         td.table().incr_storage->finish_write();
         notify_sync_table(meta.sid);
@@ -870,11 +872,11 @@ void Server::process_store_request(PSRequest& req,
     DurationObserver observer(
             metrics_histogram(PS_REQUEST_DURATION_MS_BUCKET,
                 PS_REQUEST_DURATION_MS_BUCKET_DESC,
-                {{"request_type", "c2s_store"}},
+                {{"request_type", "c2s_store"}, {"storage_id", std::to_string(meta.sid)}},
                 METRICS_LATENCY_BOUNDARY));
     metrics_counter(PS_REQUESTS_TOTAL,
             PS_REQUESTS_TOTAL_DESC,
-            {{"request_type", "c2s_store"}}).Increment();
+            {{"request_type", "c2s_store"}, {"storage_id", std::to_string(meta.sid)}}).Increment();
     TableDescriptorReader td;
     auto status = _ctx.GetTableDescriptorReader(meta.sid, td);
     SCHECK(status.ok()) << status.ToString();
@@ -889,7 +891,7 @@ void Server::process_store_request(PSRequest& req,
         send_response(std::move(resp));
         metrics_counter(PS_ERRORS_TOTAL,
                 PS_ERRORS_TOTAL_DESC,
-                {{"request_type", "c2s_store"}}).Increment();
+                {{"request_type", "c2s_store"}, {"storage_id", std::to_string(meta.sid)}}).Increment();
         return;
     }
     auto it = td.table().handlers.find(meta.hid);
@@ -1003,11 +1005,11 @@ void Server::process_s2s_async_push_request(PSRequest& req,
     DurationObserver observer(
             metrics_histogram(PS_REQUEST_DURATION_MS_BUCKET,
                 PS_REQUEST_DURATION_MS_BUCKET_DESC,
-                {{"request_type", "s2s_async_push"}},
+                {{"request_type", "s2s_async_push"}, {"storage_id", std::to_string(meta.sid)}},
                 METRICS_LATENCY_BOUNDARY));
     metrics_counter(PS_REQUESTS_TOTAL,
             PS_REQUESTS_TOTAL_DESC,
-            {{"request_type", "s2s_async_push"}}).Increment();
+            {{"request_type", "s2s_async_push"}, {"storage_id", std::to_string(meta.sid)}}).Increment();
     TableDescriptorReader td;
     auto status = _ctx.GetTableDescriptorReader(meta.sid, td);
     if (!status.ok()) {
@@ -1015,7 +1017,7 @@ void Server::process_s2s_async_push_request(PSRequest& req,
                       << " client ver: " << meta.ctx_ver;
         metrics_counter(PS_ERRORS_TOTAL,
                 PS_ERRORS_TOTAL_DESC,
-                {{"request_type", "s2s_async_push"}}).Increment();
+                {{"request_type", "s2s_async_push"}, {"storage_id", std::to_string(meta.sid)}}).Increment();
         resp.rpc_response().set_error_code(RpcErrorCodeType::ELOGICERROR);
         resp << status;
         return;
@@ -1027,7 +1029,7 @@ void Server::process_s2s_async_push_request(PSRequest& req,
                       << " server ver: " << td.table().version;
         metrics_counter(PS_ERRORS_TOTAL,
                 PS_ERRORS_TOTAL_DESC,
-                {{"request_type", "s2s_async_push"}}).Increment();
+                {{"request_type", "s2s_async_push"}, {"storage_id", std::to_string(meta.sid)}}).Increment();
         resp.rpc_response().set_error_code(RpcErrorCodeType::ELOGICERROR);
         resp << status;
         return;
@@ -1038,13 +1040,13 @@ void Server::process_s2s_async_push_request(PSRequest& req,
 
     metrics_counter(PS_REQUESTS_SIZE_BYTES,
             PS_REQUESTS_SIZE_BYTES_DESC,
-            {{"request_type", "s2s_async_push"}}).Increment(req.archive().length());
+            {{"request_type", "s2s_async_push"}, {"storage_id", std::to_string(meta.sid)}}).Increment(req.archive().length());
     static_cast<LoadOperator*>(it->second.get())->push_operator()
           ->apply_async_push_request(
                 *td.table().runtime_info, req, td.table().storage.get(), nullptr, resp);
     metrics_counter(PS_RESPONSES_SIZE_BYTES,
             PS_RESPONSES_SIZE_BYTES_DESC,
-            {{"request_type", "s2s_async_push"}}).Increment(resp.archive().length());
+            {{"request_type", "s2s_async_push"}, {"storage_id", std::to_string(meta.sid)}}).Increment(resp.archive().length());
 }
 
 void Server::process_new_ctx_create_shard_request(const PSMessageMeta& meta,
