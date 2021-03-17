@@ -9,13 +9,18 @@ link_libraries(pico_ps_static gtest gtest_main)
 # 服务化功能测试
 # ps_ha_loader_puller_test
 
-add_executable(ps_service_test ps_service_test.cpp)
+include(GoogleTest)
 
+add_executable(ps_service_test ps_service_test.cpp)
 add_executable(ps_predictor_native_ps_test ps_predictor_native_ps_test.cpp)
 add_executable(ps_ha_loader_puller_test ps_ha_loader_puller_test.cpp)
+gtest_discover_tests(ps_service_test)
+gtest_discover_tests(ps_predictor_native_ps_test)
+gtest_discover_tests(ps_ha_loader_puller_test)
 
 if (USE_DCPMM)
     add_executable(ps_pmem_test ps_pmem_test.cpp)
+    gtest_discover_tests(ps_pmem_test)
 endif()
 
 # add_subdirectory(old)

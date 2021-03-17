@@ -229,10 +229,12 @@ void HA_Load_Pull_Test(size_t num_process) {
 }
 
 TEST(HA_Load_Pull, Test) {
-    HA_Load_Pull_Test(1);
-    HA_Load_Pull_Test(3);
-    HA_Load_Pull_Test(5);
-    HA_Load_Pull_Test(8);
+    for (size_t i = 0; i < 3; ++i) {
+        HA_Load_Pull_Test(1);
+        HA_Load_Pull_Test(3);
+        HA_Load_Pull_Test(5);
+        HA_Load_Pull_Test(8);
+    }
 }
 
 }
@@ -242,11 +244,5 @@ TEST(HA_Load_Pull, Test) {
 
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
-    for (size_t i = 0; i < 3; ++i) {
-        int ret = RUN_ALL_TESTS();
-        if (ret != 0) {
-            return ret;
-        }
-    }
-    return 0;
+    return RUN_ALL_TESTS();
 }

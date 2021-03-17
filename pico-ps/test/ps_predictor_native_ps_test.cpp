@@ -93,8 +93,9 @@ void PredictorNativePSTest_Test(size_t num_process) {
         node["g_rank"] = nodes[i];
         config.node()["nodes"].push_back(node);
     }
-    YAML::Node conf;
-    config.node()["op_config"] = conf;
+    Configure conf;
+    conf.node()["op_config"] = "op_config";
+    config.node()["op_config"] = conf.node();
     SLOG(INFO) << config.dump();
     int32_t storage_id = test_create_storage("TestPredictorOps", "TestStorageOperator", config);
     
@@ -136,7 +137,7 @@ void PredictorNativePSTest_Test(size_t num_process) {
     }
     node["g_rank"] = 0;
     pred_config.node()["nodes"].push_back(node);
-    pred_config.node()["op_config"] = conf;
+    pred_config.node()["op_config"] = conf.node();
     SLOG(INFO) << pred_config.dump();
 
     Configure pred_op_config;
@@ -190,10 +191,12 @@ void PredictorNativePSTest_Test(size_t num_process) {
 }
 
 TEST(PredictorNativePSTest, Test) {
-    PredictorNativePSTest_Test(1);
-    PredictorNativePSTest_Test(3);
-    PredictorNativePSTest_Test(5);
-    PredictorNativePSTest_Test(8);
+    for (size_t i = 0; i < 3; ++i) {
+        PredictorNativePSTest_Test(1);
+        PredictorNativePSTest_Test(3);
+        PredictorNativePSTest_Test(5);
+        PredictorNativePSTest_Test(8);
+    }
 }
 
 }
@@ -203,11 +206,5 @@ TEST(PredictorNativePSTest, Test) {
 
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
-    for (size_t i = 0; i < 10; ++i) {
-        int ret = RUN_ALL_TESTS();
-        if (ret != 0) {
-            return ret;
-        }
-    }
-    return 0;
+    return RUN_ALL_TESTS();
 }

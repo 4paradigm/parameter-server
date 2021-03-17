@@ -444,31 +444,39 @@ void test_dense(size_t num_process, const char* compress) {
 
 
 TEST(PSService, SparseTest) {
-    test_sparse(1, "");
-    test_sparse(3, "");
-    test_sparse(5, "");
-    test_sparse(8, "");
+    for (size_t i = 0; i < 3; ++i) {
+        test_sparse(1, "");
+        test_sparse(3, "");
+        test_sparse(5, "");
+        test_sparse(8, "");
+    }
 }
 
 TEST(PSService, SparseTestCompress) {
-    test_sparse(1, "snappy");
-    test_sparse(3, "snappy");
-    test_sparse(5, "snappy");
-    test_sparse(8, "snappy");
+    for (size_t i = 0; i < 3; ++i) {
+        test_sparse(1, "snappy");
+        test_sparse(3, "snappy");
+        test_sparse(5, "snappy");
+        test_sparse(8, "snappy");
+    }
 }
 
 TEST(PSService, DenseTest) {
-    test_dense(1, "");
-    test_dense(3, "");
-    test_dense(5, "");
-    test_dense(8, "");
+    for (size_t i = 0; i < 3; ++i) {   
+        test_dense(1, "");
+        test_dense(3, "");
+        test_dense(5, "");
+        test_dense(8, "");
+    }
 }
 
 TEST(PSService, DenseTestCompress) {
-    test_dense(1, "snappy");
-    test_dense(3, "snappy");
-    test_dense(5, "snappy");
-    test_dense(8, "snappy");
+    for (size_t i = 0; i < 3; ++i) {
+        test_dense(1, "snappy");
+        test_dense(3, "snappy");
+        test_dense(5, "snappy");
+        test_dense(8, "snappy");
+    }
 }
 
 
@@ -478,11 +486,5 @@ TEST(PSService, DenseTestCompress) {
 
 int main(int argc, char* argv[]) {
     testing::InitGoogleTest(&argc, argv);
-    for (size_t i = 0; i < 10; ++i) {
-        int ret = RUN_ALL_TESTS();
-        if (ret != 0) {
-            return ret;
-        }
-    }
-    return 0;
+    return RUN_ALL_TESTS();
 }

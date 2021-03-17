@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 option(SKIP_BUILD_TEST "whether skip build testcase" OFF)
-set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake ${PICO_CORE_SRC}/cmake)
+set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake ${PROJECT_SOURCE_DIR}/../pico-core/cmake)
 set(CMAKE_PREFIX_PATH "${THIRD_PARTY}")
 
 message(STATUS "SKIP_BUILD_TEST: ${SKIP_BUILD_TEST}")
@@ -44,9 +44,7 @@ endif()
 if (DEBUG)
     add_definitions(-O0 -g)
 else()
-    #add_definitions(-O0 -g)
     add_definitions(-O3 -DNDEBUG)
-    #add_definitions(-O3 -g -DNDEBUG) #perf
 endif()
 
 set(CMAKE_SHARED_LINKER_FLAGS "-pthread -Wl,--whole-archive -lrt -Wl,--no-whole-archive")
@@ -65,6 +63,7 @@ add_library(pico_ps SHARED $<TARGET_OBJECTS:pico_ps_obj>)
 target_link_libraries(pico_ps PUBLIC pico_core ${PicoCoreDep_LIBRARIES} ${RDMA_LIBRARIES} ${Jemalloc_pic_LIBRARIES} ${PMEM_LIBRARIES} ${NDCTL_LIBRARIES} dl)
 
 if (NOT SKIP_BUILD_TEST)
+    enable_testing()
     add_subdirectory(test)
 endif()
 
