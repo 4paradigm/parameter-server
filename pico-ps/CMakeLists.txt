@@ -1,4 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
+project(pico-ps)
+
 option(SKIP_BUILD_TEST "whether skip build testcase" OFF)
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake ${PROJECT_SOURCE_DIR}/../pico-core/cmake)
 set(CMAKE_PREFIX_PATH "${THIRD_PARTY}")
