@@ -4,7 +4,8 @@ add_library(TestOpObjects OBJECT TestOps.cpp TestPredictorOps.cpp)
 add_library(TestOps INTERFACE)
 target_link_libraries(TestOps INTERFACE $<TARGET_OBJECTS:TestOpObjects> TestOpObjects pico_ps_static ${LIBYAMLCPP})
 
-link_libraries(pico_ps_static gtest gtest_main)
+find_package(PicoTestDep)
+link_libraries(pico_ps_static ${PicoTestDep_STATIC_LIBRARIES})
 
 # 服务化功能测试
 # ps_ha_loader_puller_test
