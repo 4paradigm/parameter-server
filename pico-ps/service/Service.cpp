@@ -5,7 +5,7 @@
 #include "pico-ps/common/DistributedAsyncReturn.h"
 #include "pico-ps/common/defs.h"
 #include "pico-ps/operator/operators.h"
-#include "pico-ps/operator/RpcOperator.h"
+#include "pico-ps/operator/UDFOperator.h"
 #include "pico-ps/handler/SyncHandler.h"
 #include "pico-ps/model/Model.h"
 #include "pico-ps/service/coordinated_restore/CoordinatedRestoreController.h"
@@ -957,7 +957,7 @@ void Server::process_rpc_operator(PSRequest& req,
     }
     auto it = td.table().handlers.find(meta.hid);
     SCHECK(it != td.table().handlers.end()) << meta.hid;
-    auto op = static_cast<RpcOperatorBase*>(it->second.get());
+    auto op = static_cast<UDFOperatorBase*>(it->second.get());
     if (op->read_only()) {
         status = check_ctx_version(meta, td);
     } else {

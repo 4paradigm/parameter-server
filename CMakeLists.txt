@@ -27,7 +27,7 @@ else()
 endif()
 
 add_definitions(--std=c++14 -Wall -Wextra -Wno-deprecated-declarations -Werror -frecord-gcc-switches -fPIC)
-include_directories(SYSTEM ${PROJECT_SOURCE_DIR}/../ ${THIRD_PARTY}/include)
+include_directories(SYSTEM ${PROJECT_SOURCE_DIR} ${THIRD_PARTY}/include)
 link_directories(${THIRD_PARTY}/lib ${THIRD_PARTY}/lib64)
 
 if (DEBUG)

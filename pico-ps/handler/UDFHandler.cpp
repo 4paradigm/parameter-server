@@ -1,13 +1,13 @@
 #include <algorithm>
-#include "pico-ps/handler/RpcHandler.h"
-#include "pico-ps/operator/RpcOperator.h"
+#include "pico-ps/handler/UDFHandler.h"
+#include "pico-ps/operator/UDFOperator.h"
 
 namespace paradigm4 {
 namespace pico {
 namespace ps {
 
-void RpcHandler::call(void* param, int timeout) {
-    auto op = static_cast<RpcOperatorBase*>(_op.get());
+void UDFHandler::call(void* param, int timeout) {
+    auto op = static_cast<UDFOperatorBase*>(_op.get());
     if (!_param) {
         _param = op->create_param();
     }
@@ -26,19 +26,19 @@ void RpcHandler::call(void* param, int timeout) {
     send(std::move(_reqs), {_storage_id, _handler_id, td.table().version, -1, RequestType::OP_RPC}, timeout);
 }
 
-void RpcHandler::retry(int timeout) {
+void UDFHandler::retry(int timeout) {
     call(_param.get(), timeout);  
 }
 
-void RpcHandler::set_wait_result(void* result) {
+void UDFHandler::set_wait_result(void* result) {
     _result = result;
 }
 
-Status RpcHandler::apply_response(PSResponse& resp, PSMessageMeta&) {
-    return static_cast<RpcOperatorBase*>(_op.get())->apply_response(resp, _state.get(), _result);
+Status UDFHandler::apply_response(PSResponse& resp, PSMessageMeta&) {
+    return static_cast<UDFOperatorBase*>(_op.get())->apply_response(resp, _state.get(), _result);
 }
 
-void RpcHandler::release_dealer() {
+void UDFHandler::release_dealer() {
     _result = nullptr;
 }
     

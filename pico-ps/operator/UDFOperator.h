@@ -13,13 +13,13 @@ namespace ps {
 /*!
  * 可以覆盖大部分操作，而不需要修改server代码。
  */
-class RpcOperatorBase : public Operator {
+class UDFOperatorBase : public Operator {
 public:
-    RpcOperatorBase(const Configure& config) : Operator(config) {}
-    RpcOperatorBase(RpcOperatorBase&&) = default;
-    RpcOperatorBase& operator=(RpcOperatorBase&&) = default;
+    UDFOperatorBase(const Configure& config) : Operator(config) {}
+    UDFOperatorBase(UDFOperatorBase&&) = default;
+    UDFOperatorBase& operator=(UDFOperatorBase&&) = default;
 
-    virtual ~RpcOperatorBase() {}
+    virtual ~UDFOperatorBase() {}
 
     virtual bool read_only() = 0;
 
@@ -44,13 +44,13 @@ protected:
 };
 
 template<class Param, class State> // result不用create
-class RpcOperator: public RpcOperatorBase  {
+class UDFOperator: public UDFOperatorBase  {
 public:
-    RpcOperator(const Configure& config) : RpcOperatorBase(config) {}
-    RpcOperator(RpcOperator&&) = default;
-    RpcOperator& operator=(RpcOperator&&) = default;
+    UDFOperator(const Configure& config) : UDFOperatorBase(config) {}
+    UDFOperator(UDFOperator&&) = default;
+    UDFOperator& operator=(UDFOperator&&) = default;
 
-    virtual ~RpcOperator() {}
+    virtual ~UDFOperator() {}
 
     std::shared_ptr<void> create_param()override {
         return std::make_shared<Param>();

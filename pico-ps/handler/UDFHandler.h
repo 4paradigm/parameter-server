@@ -1,25 +1,25 @@
-#ifndef PARADIGM4_PICO_PS_HANDLER_PULLHANDLER_H
-#define PARADIGM4_PICO_PS_HANDLER_PULLHANDLER_H
+#ifndef PARADIGM4_PICO_PS_HANDLER_UDFHANDLER_H
+#define PARADIGM4_PICO_PS_HANDLER_UDFHANDLER_H
 
 
 #include "pico-ps/handler/Handler.h"
-#include "pico-ps/operator/RpcOperator.h"
+#include "pico-ps/operator/UDFOperator.h"
 
 namespace paradigm4 {
 namespace pico {
 namespace ps {
 
-class RpcHandler : public Handler {
+class UDFHandler : public Handler {
 public:
-    RpcHandler(int32_t storage_id,
+    UDFHandler(int32_t storage_id,
           int32_t handler_id,
           std::shared_ptr<Operator>& op,
           Client* client): Handler(storage_id, handler_id, op, client) {}
 
-    virtual ~RpcHandler() {}
+    virtual ~UDFHandler() {}
 
-    RpcHandler(RpcHandler&&) = default;
-    RpcHandler& operator=(RpcHandler&&) = default;
+    UDFHandler(UDFHandler&&) = default;
+    UDFHandler& operator=(UDFHandler&&) = default;
 
     void call(void* param, int timeout = -1);
 
