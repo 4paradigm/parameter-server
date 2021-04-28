@@ -6,8 +6,8 @@ pico-ps 本身提供了一个基于 hash table 的参数服务器，只需定义
 
 ## build
 
-[overview] (documents/overview.md)
+[overview](documents/overview.md)
 
-[operator] (documents/operator.md)
+[operator](documents/operator.md)
 
-[availability] (documents/availability.md)
+[availability](documents/availability.md)
