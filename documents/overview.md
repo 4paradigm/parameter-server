@@ -48,7 +48,7 @@ common中包含以下内容
 
 ## NativePS
 
-native_ps 假设 client 端已经足够装下整个模型，可以提供单节点的预估服务。使用 NativePullHandler 可以在一个线程中完成 client 端和 server 端的所有操作，避免了线程切换，但是仍然存在消息序列化的 overhead。
+NativePS 假设 client 端已经足够装下整个模型，可以提供单节点的预估服务。使用 NativePullHandler 可以在一个线程中完成 client 端和 server 端的所有操作，避免了线程切换，但是仍然存在消息序列化的 overhead。
 
 ## Controller & Model
 
