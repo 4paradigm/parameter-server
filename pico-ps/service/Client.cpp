@@ -382,6 +382,9 @@ Status Client::detect_deadnode_nolock(int32_t storage_id, TableDescriptor& td, i
             it.status = NodeStatus::UNAVAILABALE;
             need_update = true;
         }
+        // 目前UNAVAILABALE一旦设置就不能恢复RUNNING，除非pull context from master。
+        // 而且不能restore UNAVAILABALE节点，只能kill后变成DEAD状态再restore。
+        // UNAVAILABALE状态push到master是否合理？目前有可能push到master。
     }
     if (need_update) {
         td.refresh_info();
