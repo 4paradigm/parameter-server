@@ -6,7 +6,7 @@ TableDescriptor 的 context 部分包含了 node 状态，分片信息等应保�
 
 ![avatar](context.drawio.png)
 
-master 上会维护最新的 context，在修改本地的 context 后，需要 push context to master，这时需要通过乐观锁保证 context 修改满足事务要求，如果 master 上的 context 已经被其他事务更新，则本次修改失败。
+master 上会维护最新的 context，在修改本地的 context 后，需要 push context to master。一般的 context 修改流程如上图，通过乐观锁或悲观锁保证 context 修改满足事务要求。
 
 ## Operator
 
@@ -22,7 +22,6 @@ master 上会维护最新的 context，在修改本地的 context 后，需要 p
 
 ![avatar](restore.drawio.png)
 
-DEAD node 检测是在 Handler 中自动进行，重启需要用户以 restore 模式启动一个新的 server，之后 server 会自动找到一个 DEAD node，并依次 restore 与它相关的所有 storage，restore 一个 storage 的流程如上图。目前 detect dead node 和 restore 都在分布式锁中完成，所以 push context to master 不会失败。
+DEAD node 检测是在 Handler 中自动进行，重启需要用户以 restore 模式启动一个新的 server，之后 server 会自动找到一个 DEAD node，并依次 restore 与它相关的所有 storage，restore 一个 storage 的流程如上图。
 
-只要每个 shard 都至少有一个 RUNNING 的 node，就保证了 PullHandler 是可用的。
-
+只要每个 shard 都至少有一个 RUNNING node，就保证了 PullHandler 是可用的。
