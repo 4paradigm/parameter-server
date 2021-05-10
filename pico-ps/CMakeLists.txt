@@ -21,6 +21,7 @@ find_package(Jemalloc REQUIRED)
 find_package(PicoCoreDep REQUIRED)
 
 file(GLOB PS_SRC api/*.cpp common/*.cpp handler/*.cpp model/*.cpp native_ps/*.cpp operator/*.cpp service/*.cpp storage/*.cpp service/coordinated_restore/*.cpp controller/*.cpp)
+
 add_library(pico_ps_obj OBJECT ${PS_SRC})
 
 add_library(pico_ps_static STATIC $<TARGET_OBJECTS:pico_ps_obj>)
