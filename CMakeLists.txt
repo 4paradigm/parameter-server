@@ -1,9 +1,9 @@
-cmake_minimum_required (VERSION 2.8.11)
+cmake_minimum_required(VERSION 3.10)
 
-project(pico-ps)
+project(pico-ps VERSION 0.1.0)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${PROJECT_SOURCE_DIR}/cmake ${PROJECT_SOURCE_DIR}/pico-core/cmake)
 
-if(THIRD_PARTY)
+if (THIRD_PARTY)
     set(CMAKE_PREFIX_PATH "${THIRD_PARTY}")
     message(STATUS "THIRD_PARTY=${THIRD_PARTY}")
     include_directories(SYSTEM ${THIRD_PARTY}/include)
