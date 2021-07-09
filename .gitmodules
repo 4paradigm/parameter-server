@@ -1,4 +1,4 @@
-[submodule "pico-core"]
+[submodule "prpc"]
 	path = pico-core
-	url = git@gitlab.4pd.io:ml_system/pico/pico-core.git
+	url = https://github.com/4paradigm/prpc.git
 	update = none
