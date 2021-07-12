@@ -27,7 +27,7 @@ else()
 endif()
 
 add_definitions(--std=c++14 -Wall -Wextra -Wno-deprecated-declarations -Werror -frecord-gcc-switches -fPIC)
-include_directories(SYSTEM ${PROJECT_SOURCE_DIR})
+include_directories(BEFORE SYSTEM ${PROJECT_SOURCE_DIR})
 
 if (DEBUG)
     add_definitions(-O0 -g)
