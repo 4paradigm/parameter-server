@@ -1,3 +1,5 @@
+[![build status](https://github.com/4paradigm/parameter-server/actions/workflows/build.yml/badge.svg)](https://github.com/4paradigm/parameter-server/actions/workflows/build.yml)
+
 ## 关于
 
 pico-ps 是一个高性能参数服务器框架，支持 pull, push, load, dump 等操作，支持 restore dead node，支持运行时增删节点，负载均衡，支持高可用。
