@@ -144,7 +144,6 @@ public:
 
     template<class... ARGS>
     std::pair<iterator, bool> try_emplace(const key_type& key, ARGS&&... args) {
-        reserve(_size + 1);
         size_type np = 0;
         size_type p = _hash(key) & _mask;
         while (!_key_equal(_buckets[p].first, _empty)) {
@@ -153,10 +152,14 @@ public:
             }
             prob(p, np);
         }
-        ++_size;
-        _buckets[p].first = key;
-        _allocator.construct(&_buckets[p].second, std::forward<ARGS>(args)...);
-        return {iter(p), true};
+        if (_size < _max_size) {
+            ++_size;
+            _buckets[p].first = key;
+            _allocator.construct(&_buckets[p].second, std::forward<ARGS>(args)...);
+            return {iter(p), true};
+        }
+        reserve(_size + 1);
+        return try_emplace(key, std::forward<ARGS>(args)...);
     }
 
     //must exist
