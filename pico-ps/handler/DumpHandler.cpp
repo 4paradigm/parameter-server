@@ -16,7 +16,11 @@ DumpHandler::~DumpHandler() {}
 
 void DumpHandler::dump(const DumpArgs& args) {
     URIConfig uri(args.uri());
-    SCHECK(FileSystem::create_output_dir(uri.name()));
+    if (uri.is_memory()) {
+        SCHECK(FileSystem::create_output_dir(uri));
+    } else {
+        SCHECK(FileSystem::create_output_dir(uri.name()));
+    }
     for_each(args, RequestType::OP_DUMP);
 }
 
