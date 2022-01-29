@@ -7,7 +7,6 @@
 #include "pico-ps/handler/handlers.h"
 #include "pico-ps/operator/operators.h"
 #include "pico-ps/storage/KVShardStorage.h"
-
 #include "pico-ps/test/TestOpsDs.h"
 
 constexpr int TEST_KEY_NUM = 100;

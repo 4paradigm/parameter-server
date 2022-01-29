@@ -8,6 +8,7 @@
 
 #include "tsl/hopscotch_map.h"
 #include "pico-ps/storage/Storage.h"
+#include "pico-core/PoolHashTable.h"
 
 namespace paradigm4 {
 namespace pico {
@@ -832,8 +833,128 @@ void safe_erase(HT& ht, const KeyType& key, typename HT::iterator* = nullptr) {
     }
 }
 
+/*!
+ * \brief  pool_hash_map 实现的Key-Value ShardStorage 类型
+ */
+template <typename KEY,
+      typename VALUE,
+      typename HASH = std::hash<KEY>,
+      typename KEYEQUAL = std::equal_to<KEY>,
+      typename ALLOCATOR = std::allocator<std::pair<KEY, VALUE>> >
+class PoolHashMapShardStorage : public KVShardStorage<KEY, VALUE> {
+public:
+    using KVShardStorage<KEY, VALUE>::_shards;
+    using KVShardStorage<KEY, VALUE>::_shards_meta;
+    using KVShardStorage<KEY, VALUE>::_shard_iterators;
+    typedef core::pool_hash_map<KEY, VALUE, HASH, KEYEQUAL> shard_type;
+    typedef pico::vector<std::pair<KEY, VALUE>> vector_type;
+    typedef HASH hasher_type;
+    typedef KEYEQUAL key_equal_type;
+    typedef ALLOCATOR alloc_type;
+    typedef typename shard_type::iterator iterator_type;
+    typedef typename shard_type::iterator accessor_type;
+    typedef KVShardIterator<shard_type> shard_iterator_type;
+
+    template <typename VAL>
+    using map_type=core::pool_hash_map<KEY, VAL, HASH, KEYEQUAL>;
+
+    double grow = 1.0;
+    size_t expected_max_items = 0;
+
+    template <typename VAL>
+    static void init_map(map_type<VAL>& map, double grow, size_t reserve) {
+        map.max_load_factor(grow);
+        map.reserve(reserve);
+    }
+
+    template <typename VAL>
+    static void clear_map(map_type<VAL>& map) {
+        map.clear();
+    }
+
+    static size_t map_memory_usage(shard_type& map){
+        return map.bucket_count() * (sizeof(KEY) + sizeof(VALUE) + 8);
+    }
+
+    PoolHashMapShardStorage(const std::unordered_set<int32_t>& shard_id, const Configure& conf) {
+        for (const auto& id : shard_id) {
+            if (conf.has("google_dense_hash_map")) {
+                const auto& param = conf["google_dense_hash_map"];
+                if (param.has("expected_max_items")) {
+                    expected_max_items
+                          = param.node()["expected_max_items"].as<size_t>();
+                }
+            }
+            if (conf.has("pool_hash_map")) {
+                const auto& param = conf["pool_hash_map"];
+                if (param.has("grow_ratio")) {
+                    grow = param.node()["grow_ratio"].as<double>();
+                }
+                if (param.has("expected_max_items")) {
+                    expected_max_items
+                          = param.node()["expected_max_items"].as<size_t>();
+                }
+            }
+           create_shard(id);
+        }
+    }
+
+    void clear() override {
+        for (auto& shard : _shards) {
+            auto shard_ptr = boost::any_cast<shard_type>(&shard.second->data);
+            SCHECK(shard_ptr != nullptr);
+            clear_map(*shard_ptr);
+        }
+    }
+
+    virtual bool create_shard(int32_t shard_id) override {
+        core::lock_guard<RWSpinLock> lk(this->_mtx);
+        //LOG(INFO) << "create shard : " << shard_id << " " << shrink << " " << grow << " " << expected_max_items;
+        if (_shards.count(shard_id) != 0) {
+            return false;
+        }
+        this->_mem.reshard = true;
+        _shards.emplace(shard_id, std::make_unique<ShardData>());
+        _shards[shard_id]->data = shard_type();
+        _shards[shard_id]->data_vector = vector_type();
+        init_map(boost::any_cast<shard_type&>(_shards[shard_id]->data), grow, expected_max_items);
+        this->_mem.reshard = false;
+        _shards_meta.emplace(shard_id, std::make_unique<ShardDataMeta>());
+        _shards_meta[shard_id]->on_dcpmm = false;
+        return true;
+    }
+
+    virtual size_t shard_size(int32_t shard_id) override {
+        boost::shared_lock<RWSpinLock> lk(this->_mtx);
+        auto it = _shards.find(shard_id);
+        if (it != _shards.end()) {
+            auto shard_ptr = boost::any_cast<shard_type>(&it->second->data);
+            return shard_ptr->size();
+        }
+        return 0;
+    }
+
+    // TODO: calculate memory usage for nontivial value type
+    virtual size_t shard_memory_usage(int32_t shard_id) override {
+        boost::shared_lock<RWSpinLock> lk(this->_mtx);
+        auto it = _shards.find(shard_id);
+        if (it != _shards.end()) {
+            auto shard_ptr = boost::any_cast<shard_type>(&it->second->data);
+            return map_memory_usage(*shard_ptr);
+        }
+        return 0;
+    }
+
+    virtual ShardIterator* get_shard_iterator(int32_t shard_id, int32_t iterator_id) override {
+        return this->template _get_shard_iterator_impl<shard_type, shard_iterator_type>(shard_id, iterator_id);
+    }
+
+};
+
 } // namespace ps
 } // namespace pico
 } // namespace paradigm4
+
+#define GoogleDenseHashMapShardStorage PoolHashMapShardStorage
 
 #endif // PARADIGM4_PICO_PS_STORAGE_KVSHARDSTORAGE_H
