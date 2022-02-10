@@ -39,9 +39,10 @@ public:
         shard_storage->write_shard(shard_id, [this](boost::any& shard) {
             shard_type& data = *boost::any_cast<shard_type>(&shard);
             for (auto it = data.begin(); it != data.end();) {
-                auto cur_it = it++;
-                if (erase_if(cur_it->first, cur_it->second)) {
-                    data.erase(cur_it);
+                if (erase_if(it->first, it->second)) {
+                    it = data.erase(it);
+                } else {
+                    ++it;
                 }
             }
         });
