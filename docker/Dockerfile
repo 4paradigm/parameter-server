@@ -1,4 +1,4 @@
-FROM 4pdosc/prpc-base:0.1.0
+FROM 4pdosc/prpc-base:0.1.2
 
 ADD . /parameter-server
 WORKDIR /parameter-server/pico-core
