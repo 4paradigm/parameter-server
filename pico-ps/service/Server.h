@@ -129,7 +129,7 @@ private:
           const PSMessageMeta& meta,
           std::function<void(PSResponse&&)> send_response);
 
-    void process_rpc_operator(PSRequest& req,
+    void process_udf_operator(PSRequest& req,
           const PSMessageMeta& meta,
           Dealer* dealer);
 

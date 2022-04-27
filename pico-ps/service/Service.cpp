@@ -481,8 +481,8 @@ void Server::process_c2s_request() {
         case RequestType::OP_STORE:
             process_store_request(req, meta, send_response);
             break;
-        case RequestType::OP_RPC:
-            process_rpc_operator(req, meta, dealer.get());
+        case RequestType::OP_UDF:
+            process_udf_operator(req, meta, dealer.get());
             break;
         case RequestType::OP_LOAD_LIBRARY:
             process_load_library_request(req, resp);
@@ -525,7 +525,7 @@ void Server::process_c2s_request() {
 
         if (meta.req_type == RequestType::OP_LOAD ||
             meta.req_type == RequestType::OP_STORE ||
-            meta.req_type == RequestType::OP_RPC) {
+            meta.req_type == RequestType::OP_UDF) {
             continue;
         }
         // SCHECK(req.archive().is_exhausted());
@@ -931,17 +931,17 @@ void Server::process_load_library_request(PSRequest& req, PSResponse& resp) {
     }
 }
 
-void Server::process_rpc_operator(PSRequest& req,
+void Server::process_udf_operator(PSRequest& req,
       const PSMessageMeta& meta,
       Dealer* dealer) {
     DurationObserver observer(
             metrics_histogram(PS_REQUEST_DURATION_MS_BUCKET,
                 PS_REQUEST_DURATION_MS_BUCKET_DESC,
-                {{"request_type", "c2s_rpc_op"}},
+                {{"request_type", "c2s_udf_op"}},
                 METRICS_LATENCY_BOUNDARY));
     metrics_counter(PS_REQUESTS_TOTAL,
             PS_REQUESTS_TOTAL_DESC,
-            {{"request_type", "c2s_rpc_op"}}).Increment();
+            {{"request_type", "c2s_udf_op"}}).Increment();
     TableDescriptorReader td;
     auto status = _ctx.GetTableDescriptorReader(meta.sid, td);
     if (!status.ok()) {
@@ -952,7 +952,7 @@ void Server::process_rpc_operator(PSRequest& req,
         dealer->send_response(std::move(resp.rpc_response()));
         metrics_counter(PS_ERRORS_TOTAL,
                 PS_ERRORS_TOTAL_DESC,
-                {{"request_type", "c2s_rpc_op"}}).Increment();
+                {{"request_type", "c2s_udf_op"}}).Increment();
         return;
     }
     auto it = td.table().handlers.find(meta.hid);
@@ -971,7 +971,7 @@ void Server::process_rpc_operator(PSRequest& req,
         dealer->send_response(std::move(resp.rpc_response()));
         metrics_counter(PS_ERRORS_TOTAL,
                 PS_ERRORS_TOTAL_DESC,
-                {{"request_type", "c2s_rpc_op"}}).Increment();
+                {{"request_type", "c2s_udf_op"}}).Increment();
         return;
     }
     op->apply_request(meta, req, td.table(), dealer);

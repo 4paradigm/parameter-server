@@ -25,10 +25,6 @@ public:
 
     virtual std::shared_ptr<void> create_state() = 0;
 
-    virtual std::shared_ptr<void> create_param() = 0;
-
-    virtual void copy_param(const void* param, void* copy) = 0;
-  
     virtual Status generate_request(void* param, RuntimeInfo& rt, void* state, std::vector<PSRequest>& reqs) = 0;
 
     virtual void apply_request(const PSMessageMeta& meta, PSRequest&, const TableDescriptor&, Dealer* dealer) = 0;
@@ -52,16 +48,8 @@ public:
 
     virtual ~UDFOperator() {}
 
-    std::shared_ptr<void> create_param()override {
-        return std::make_shared<Param>();
-    }
-
     std::shared_ptr<void> create_state()override {
         return std::make_shared<State>();
-    }
-
-    void copy_param(const void* param, void* copy)override {
-        *static_cast<Param*>(copy) = *static_cast<const Param*>(param);
     }
 
     Status generate_request(void* param, RuntimeInfo& rt, void* state, std::vector<PSRequest>& reqs) {
