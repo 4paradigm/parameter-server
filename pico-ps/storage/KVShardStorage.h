@@ -824,10 +824,10 @@ bool safe_shrink(HT& ht, typename HT::iterator* = nullptr) {
     }
 }
 
-template<class HT, class KeyType>
-void safe_erase(HT& ht, const KeyType& key, typename HT::iterator* = nullptr) {
+template<class HT>
+void safe_erase(HT& ht, typename HT::iterator& it) {
     try {
-        ht.erase(key);
+        it = ht.erase(it);
     } catch(std::bad_alloc&) {
         SLOG(FATAL) << "unexpected std::bad_alloc!";
     }

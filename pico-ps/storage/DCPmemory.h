@@ -301,10 +301,10 @@ public:
         return true;
     }
 
-    // pmem::obj::concurrent_hash_map 的 iterator 指向某个 key 时会对该 key 加互斥锁。
-    // 所以无法通过传入 iterator 再调用 erase(it->first) 删除，不然会导致死锁。
-    friend void safe_erase(PmemHashMapHandle& ht, const Key& key) {
+    friend void safe_erase(PmemHashMapHandle& ht, const_iterator& it) {
         try {
+            key_type key(it->first);
+            ++it;
             ht._ptr->erase(key);
         } catch (std::exception& e) {
             SLOG(FATAL) << e.what()

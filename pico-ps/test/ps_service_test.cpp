@@ -293,6 +293,7 @@ void test_dense(size_t num_process, const char* compress) {
         }
     }
 
+    mp->barrier(PICO_LINENUM);
     auto ctx_handler = test_make_handler<UpdateContextHandler>(
           "TestOps", "TestDenseUpdateContextOperator", op_config, storage_id);
     if (0 == mp->rank()) {
@@ -365,8 +366,7 @@ void test_dense(size_t num_process, const char* compress) {
     }
 
     mp->barrier(PICO_LINENUM);
-    storage_id = test_create_storage("TestOps", "TestDenseStorageOperator", config);
-
+    storage_id = test_create_storage("TestOps", "TestDenseStorageOperator", config);    
     SLOG(INFO) << "storage id = " << storage_id << " is created.";
     auto load_handler = test_make_handler<LoadHandler>(
           "TestOps", "TestDenseLoadOperator", op_config, storage_id);
@@ -461,6 +461,15 @@ TEST(PSService, SparseTestCompress) {
     }
 }
 
+TEST(PSService, SparseTestCompressZStd) {
+    for (size_t i = 0; i < 3; ++i) {
+        test_sparse(1, "zstd");
+        test_sparse(3, "zstd");
+        test_sparse(5, "zstd");
+        test_sparse(8, "zstd");
+    }
+}
+
 TEST(PSService, DenseTest) {
     for (size_t i = 0; i < 3; ++i) {   
         test_dense(1, "");
@@ -479,6 +488,14 @@ TEST(PSService, DenseTestCompress) {
     }
 }
 
+TEST(PSService, DenseTestCompressZStd) {
+    for (size_t i = 0; i < 3; ++i) {
+        test_dense(1, "zstd");
+        test_dense(3, "zstd");
+        test_dense(5, "zstd");
+        test_dense(8, "zstd");
+    }
+}
 
 } // namespace ps
 } // namespace pico

@@ -40,7 +40,7 @@ public:
             shard_type& data = *boost::any_cast<shard_type>(&shard);
             for (auto it = data.begin(); it != data.end();) {
                 if (erase_if(it->first, it->second)) {
-                    it = data.erase(it);
+                    safe_erase(data, it);
                 } else {
                     ++it;
                 }
